@@ -1,0 +1,29 @@
+{
+  "extends": ["construction-200.yaml"],
+  "experiment": {
+    "name": "construction-study200-20261102",
+    "scope": "formal construction SFT and paired full-test retrieval ablation",
+    "output": "/public/home/wwxia/yuang.li/workspace/Mem-T/artifacts/construction-study200-20261102"
+  },
+  "construction": {
+    "checkpoint_policy": "export_only",
+    "rollouts": 80,
+    "minimum_valid_operations": 24000,
+    "maximum_operations": 30000,
+    "forest_batch_size": 8
+  },
+  "memory": {"hnsw_num_threads": 1},
+  "runtime": {
+    "compress_forests": true,
+    "compress_sft_records": true,
+    "resumable_evaluation": true
+  },
+  "study": {
+    "judge_protocol": "memory-r2-generous-v1",
+    "walltime_margin_seconds": 600,
+    "sft_minimum_job_seconds": 14400,
+    "peak_additional_bytes": 26000000000,
+    "maximum_jobs": 32,
+    "maximum_sft_attempts": 2
+  }
+}

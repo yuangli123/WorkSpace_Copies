@@ -1,0 +1,15 @@
+{
+  "extends": [
+    "window-a100x2-pilot.json"
+  ],
+  "retrieval": {
+    "steps": 50
+  },
+  "runtime": {
+    "save_every": 10,
+    "validate_every": 10
+  },
+  "window": {
+    "step_seconds": 0
+  }
+}

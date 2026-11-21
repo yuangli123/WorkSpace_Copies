@@ -1,0 +1,97 @@
+{
+  "seed": 42,
+  "backend": "verl",
+  "benchmark": "locomo",
+  "models": {
+    "base": "/public/home/wwxia/yuang.li/models/Qwen3-4B"
+  },
+  "model": {
+    "dtype": "bfloat16",
+    "device": "cuda:0",
+    "temperature": 1.0,
+    "max_new_tokens": 512,
+    "gradient_checkpointing": true
+  },
+  "memory": {
+    "backend": "chroma",
+    "embedding_model": "/public/home/wwxia/yuang.li/models/bge-m3",
+    "summary_context_turns": 4,
+    "update_retrieval_topk": 3,
+    "retrieval_topk": 5
+  },
+  "experiment": {
+    "variant": "M4",
+    "mode": "source_backed",
+    "train_roles": [
+      "B",
+      "U",
+      "R"
+    ]
+  },
+  "joint": {
+    "global_rollouts": 4,
+    "builder_rollouts": 4,
+    "updater_rollouts": 4,
+    "global_questions": 4,
+    "local_questions": 4,
+    "local_anchors": 1,
+    "retrieval_questions": 32,
+    "curriculum": [],
+    "loss_variant": "step",
+    "branch_weights": {
+      "B": {
+        "global": 0.16666666666666666,
+        "local": 0.16666666666666666
+      },
+      "U": {
+        "global": 0.16666666666666666,
+        "local": 0.16666666666666666
+      },
+      "R": {
+        "mot": 0.3333333333333333
+      }
+    },
+    "local_evaluation": "current_or_continuation"
+  },
+  "reward": {
+    "evidence": 0.5,
+    "retrieval_cost": 0.05,
+    "memory_cost": 0.05,
+    "edit_cost": 0.01,
+    "invalid": -3.0
+  },
+  "retrieval": {
+    "trees": 3,
+    "max_depth": 4,
+    "pivots": 3,
+    "expansion_rounds": 1,
+    "observation_tokens": 2048,
+    "token_budget": 8192,
+    "max_prompt_tokens": 5632,
+    "max_observation_tokens": 2048,
+    "steps": 200,
+    "learning_rate": 1e-06,
+    "warmup_ratio": 0.1,
+    "clip": 0.2,
+    "kl_beta": 0.001
+  },
+  "evaluation": {
+    "max_steps": 6
+  },
+  "distributed": {
+    "gpus": 4,
+    "tensor_parallel": 4,
+    "generation_batch_size": 16,
+    "actor_offload": true,
+    "rank0_init_only": false,
+    "actor_model_dtype": "bfloat16",
+    "max_batched_tokens": 8192,
+    "gpu_memory_utilization": 0.35
+  },
+  "runtime": {
+    "save_every": 5,
+    "managed_checkpoints": false,
+    "monitor_interval": 2,
+    "validate_every": 20
+  }
+}

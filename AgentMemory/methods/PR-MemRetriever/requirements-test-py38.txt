@@ -1,0 +1,12 @@
+# Actual local verification profile. Uses the existing torch 2.2.2+cu121.
+# This profile tests a tiny GPT2; it cannot load Qwen3 (needs newer Transformers).
+transformers==4.46.3
+accelerate==1.0.1
+loguru==0.7.3
+openai==1.109.1
+python-dotenv==1.0.1
+tiktoken==0.7.0
+omegaconf==2.3.0
+typing-extensions==4.13.2
+jinja2==3.1.6
+MarkupSafe==2.1.5

@@ -1,0 +1,156 @@
+{
+  "reference_tree_sha256": "6e6d78146fb946caf7917c6ca9fcdb0721285ded65d59187f7431db1ca7fc1f5",
+  "nodes": [
+    [
+      {
+        "id": 0,
+        "parent": -1,
+        "depth": 0,
+        "messages": [],
+        "prompt_ids": [],
+        "response_ids": [],
+        "text": "",
+        "valid": true,
+        "terminal": false,
+        "answer": "",
+        "observation": "",
+        "retrieved": [],
+        "seen_turns": [],
+        "children": [],
+        "evidence": 0.0,
+        "performance": 0.0,
+        "reward": 0.0,
+        "intra": 0.0,
+        "inter": 0.0,
+        "advantage": 0.0
+      },
+      {
+        "id": 1,
+        "parent": 0,
+        "depth": 1,
+        "messages": [],
+        "prompt_ids": [],
+        "response_ids": [],
+        "text": "",
+        "valid": true,
+        "terminal": false,
+        "answer": "",
+        "observation": "",
+        "retrieved": [
+          {
+            "source_turn_ids": [
+              "D1:1"
+            ]
+          }
+        ],
+        "seen_turns": [],
+        "children": [
+          2,
+          3
+        ],
+        "evidence": 1.0,
+        "performance": 0.5,
+        "reward": 1.5,
+        "intra": 0.3922318087384495,
+        "inter": 0.5070918671237514,
+        "advantage": 0.899323675862201
+      },
+      {
+        "id": 2,
+        "parent": 1,
+        "depth": 2,
+        "messages": [],
+        "prompt_ids": [],
+        "response_ids": [],
+        "text": "",
+        "valid": true,
+        "terminal": true,
+        "answer": "Paris",
+        "observation": "",
+        "retrieved": [
+          {
+            "source_turn_ids": [
+              "D1:1"
+            ]
+          }
+        ],
+        "seen_turns": [],
+        "children": [],
+        "evidence": 1.0,
+        "performance": 1.0,
+        "reward": 2.0,
+        "intra": 0.9805795218461238,
+        "inter": 1.1832143566220867,
+        "advantage": 2.1637938784682107
+      },
+      {
+        "id": 3,
+        "parent": 1,
+        "depth": 2,
+        "messages": [],
+        "prompt_ids": [],
+        "response_ids": [],
+        "text": "",
+        "valid": true,
+        "terminal": true,
+        "answer": "Rome",
+        "observation": "",
+        "retrieved": [],
+        "seen_turns": [],
+        "children": [],
+        "evidence": 0.0,
+        "performance": 0.0,
+        "reward": 0.0,
+        "intra": -1.3728113305845737,
+        "inter": -1.5212756013712543,
+        "advantage": -2.894086931955828
+      }
+    ],
+    [
+      {
+        "id": 0,
+        "parent": -1,
+        "depth": 0,
+        "messages": [],
+        "prompt_ids": [],
+        "response_ids": [],
+        "text": "",
+        "valid": true,
+        "terminal": false,
+        "answer": "",
+        "observation": "",
+        "retrieved": [],
+        "seen_turns": [],
+        "children": [],
+        "evidence": 0.0,
+        "performance": 0.0,
+        "reward": 0.0,
+        "intra": 0.0,
+        "inter": 0.0,
+        "advantage": 0.0
+      },
+      {
+        "id": 1,
+        "parent": 0,
+        "depth": 1,
+        "messages": [],
+        "prompt_ids": [],
+        "response_ids": [],
+        "text": "",
+        "valid": true,
+        "terminal": true,
+        "answer": "Paris",
+        "observation": "",
+        "retrieved": [],
+        "seen_turns": [],
+        "children": [],
+        "evidence": 0.0,
+        "performance": 1.0,
+        "reward": 1.0,
+        "intra": 0.0,
+        "inter": -0.16903062237458383,
+        "advantage": -0.16903062237458383
+      }
+    ]
+  ]
+}

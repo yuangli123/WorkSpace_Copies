@@ -1,0 +1,11 @@
+{
+  "extends": ["joint.json"],
+  "construction": {
+    "rollouts": 60, "minimum_selected": 10000, "maximum_operations": 100000,
+    "evidence_gate": true, "trace_gate": true, "trace_lambda": 0.1, "keep_fraction": 0.5,
+    "steps": 200, "max_length": 6144, "learning_rate": 0.000005, "warmup_ratio": 0.1,
+    "per_device_batch_size": 2, "gradient_accumulation": 4, "validation_fraction": 0.1,
+    "global_batch_size": 32, "save_every": 20, "checkpoint_policy": "full",
+    "deepspeed": "configs/zero3.json", "attention_implementation": "flash_attention_2"
+  }
+}

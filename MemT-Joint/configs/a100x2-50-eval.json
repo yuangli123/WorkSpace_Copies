@@ -1,0 +1,6 @@
+{
+  "extends": [
+    "a100x2-50.json"
+  ],
+  "backend": "hf"
+}

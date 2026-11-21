@@ -1,0 +1,18 @@
+{
+  "models": {
+    "base": "/public/home/wwxia/yuang.li/models/Qwen3-4B",
+    "construction": "/public/home/wwxia/yuang.li/models/Qwen3-4B",
+    "retrieval": "/public/home/wwxia/yuang.li/workspace/Mem-T/artifacts/long200-20261027/retrieval/final",
+    "embedding": "/public/home/wwxia/yuang.li/models/bge-m3",
+    "judge": "/public/home/wwxia/yuang.li/models/Qwen3-4B"
+  },
+  "model": {
+    "dtype": "bfloat16",
+    "device": "cuda",
+    "reference_device": "cpu",
+    "max_new_tokens": 1024,
+    "temperature": 1.0,
+    "gradient_checkpointing": true,
+    "checkpoint": null
+  }
+}

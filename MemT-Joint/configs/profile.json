@@ -1,0 +1,5 @@
+{
+  "extends": ["joint.json"],
+  "retrieval": {"steps": 10, "warmup_ratio": 0.0},
+  "runtime": {"save_every": 1, "validate_every": 5}
+}

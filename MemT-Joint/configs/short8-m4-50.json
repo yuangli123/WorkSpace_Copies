@@ -1,0 +1,4 @@
+{
+  "extends": ["memt-execution-m4-50.json"],
+  "short_episode": {"blocks": 8}
+}

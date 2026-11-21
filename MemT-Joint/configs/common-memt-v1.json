@@ -1,0 +1,21 @@
+{
+  "extends": ["joint.json"],
+  "backend": "verl",
+  "protocol": {
+    "name": "memt-execution-v2",
+    "policy_inference": "vllm",
+    "answer_inference": "vllm",
+    "answer_weights": "current_policy",
+    "answer_interface": "finish_answer",
+    "failure_policy": "fallback_visible_only"
+  },
+  "model": {"max_new_tokens": 1024, "effective_prompt_tokens": 39936},
+  "retrieval": {
+    "max_prompt_tokens": 39936,
+    "max_observation_tokens": 20480,
+    "observation_tokens": 20480,
+    "token_budget": 40960
+  },
+  "evaluation": {"max_steps": 6, "fallback_answer": true},
+  "distributed": {"gpus": 2, "tensor_parallel": 2, "max_batched_tokens": 40960}
+}

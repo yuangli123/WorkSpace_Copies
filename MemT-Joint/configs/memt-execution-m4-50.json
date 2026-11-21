@@ -1,0 +1,5 @@
+{
+  "extends": ["common-a100x2-50.json"],
+  "experiment": {"variant": "M4", "train_roles": ["B", "U", "R"]},
+  "runtime": {"save_every": 10, "validate_every": 10, "checkpoint_retention": "latest_best"}
+}

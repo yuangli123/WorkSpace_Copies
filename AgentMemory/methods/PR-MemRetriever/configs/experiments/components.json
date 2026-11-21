@@ -1,0 +1,27 @@
+{
+  "protocol": "paper-v2",
+  "automatically_run": false,
+  "cases": [
+    {
+      "name": "baseline",
+      "config": "configs/experiments/baseline.yaml"
+    },
+    {
+      "name": "retrieval-only",
+      "config": "configs/experiments/retrieval-only.yaml"
+    },
+    {
+      "name": "construction-only",
+      "config": "configs/experiments/construction-only.yaml"
+    },
+    {
+      "name": "construction-and-retrieval",
+      "config": "configs/experiments/construction-and-retrieval.yaml"
+    }
+  ],
+  "commands": [
+    "build-memory --data <held-out-data> --output <new-memory> --inference-engine vllm",
+    "evaluate --memory <new-memory> --output <new-evaluation> --inference-engine vllm"
+  ],
+  "note": "Use each case config; model arguments resolve by explicit role. Do not reuse a memory built by another construction role."
+}

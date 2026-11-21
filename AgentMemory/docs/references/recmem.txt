@@ -1,0 +1,1579 @@
+     RecMem: Recurrence-based Memory Consolidation for Efficient and
+                 Effective Long-Running LLM Agents
+                    Zijie Dai1 Shiyuan Deng2 * Sheng Guan3 Yizhou Tian1
+                             Xin Yao4 Xiao Yan5 James Cheng1
+    1
+      Department of Computer Science and Engineering, The Chinese University of Hong Kong
+         3
+           School of Computer Science, Beijing University of Posts and Telecommunications
+      2
+        Huawei Cloud, 4 Huawei Theory Lab, 5 Institute for Math and AI, Wuhan University
+                    caiusdai@link.cuhk.edu.hk dengshiyuan@huawei.com
+
+                        Abstract                              dences even if they are present in long inputs due
+                                                              to the lost-in-the-middle effect (Liu et al., 2023).
+     Memory systems often organize user-agent in-                To address these limitations, memory systems
+     teractions as retrievable external memory and            emerge as an essential component for building
+     are crucial for long-running agents by over-             long-running LLM agents (Jiang et al., 2025;
+     coming the limited context windows of LLMs.
+                                                              Zhang et al., 2024), and many solutions have been
+     However, existing memory systems invoke
+     LLMs to process every incoming interaction               proposed with different memory structures and
+     for memory extraction, and such an eager mem-            memory extraction methods (Xu et al., 2025b;
+     ory consolidation scheme leads to substan-               Chhikara et al., 2025; Rezazadeh et al., 2025;
+     tial token consumption. To tackle this prob-             Packer et al., 2024; Maharana et al., 2024). For
+     lem, we propose RecMem by rethinking when                example, Zep (Rasmussen et al., 2025) constructs
+     memory consolidation should be conducted.                temporal knowledge graphs by abstracting rela-
+     RecMem stores incoming interactions in a sub-
+                                                              tional triplets from interactions; Mem0 (Chhikara
+     conscious memory layer and encode them us-
+     ing lightweight embedding models for retrieval.          et al., 2025) extracts atomic facts from interactions
+     LLMs are only invoked to extract episodic and            for similarity-based retrieval; A-Mem (Xu et al.,
+     semantic memory when sustained recurrence                2025b) organizes interactions as connected notes,
+     are observed for semantically similar interac-           and a note can update the contents of its neighbors.
+     tions. Such recurrence-based consolidation                  Despite the differences in existing memory sys-
+     works because these interactions correspond              tems, we observe that they all adopt an eager mem-
+     to a semantic cluster with rich information              ory consolidation scheme. In particular, for every
+     and thus are worth extraction and summariza-
+                                                              incoming user-item interaction, they invoke LLMs
+     tion. To improve accuracy, RecMem also in-
+     corporates a semantic refinement mechanism               to extract facts and merge these facts with existing
+     that recovers the fine-grained facts omitted by          memory contents. This scheme avoids missing in-
+     memory extraction. Experiments show that                 formation in the interactions but incurs substantial
+     RecMem reduces the memory construction to-               token cost for memory construction, as shown in
+     ken cost of three SOTA memory systems by up              Figure 1(d), which makes it expensive to utilize
+     to 87% while exceeding their accuracy.                   these memory systems in practice. We argue that
+                                                              running LLM-based memory consolidation for ev-
+1    Introduction                                             ery interaction is an overkill. For instance, some
+                                                              interactions may convey little information or con-
+Large Language Models (LLMs) have demon-
+                                                              tain noise, while some interactions are not related
+strated strong capabilities across a wide range of
+                                                              to existing ones and can be queried directly with-
+tasks (Guo et al., 2024; Shao et al., 2024). How-
+                                                              out consolidation. Hence, it is possible to reduce
+ever, enabling LLMs to function as long-running
+                                                              the memory construction cost by choosing when to
+agents requires accumulating experience over ex-
+                                                              conduct memory consolidation more judiciously.
+tended user-agent interactions (Jiang et al., 2025).
+                                                                 Similar insights emerge from cognitive science.
+In practice, this is hindered by two critical limi-
+                                                              The multi-store theory (Atkinson and Shiffrin,
+tations: current LLMs cannot retain information
+                                                              1968) and the Complementary Learning Systems
+beyond their limited context windows (Liu et al.,
+                                                              framework (Kumaran et al., 2016; O’Reilly et al.,
+2025), and they often under-utilize relevant evi-
+                                                              2014; McClelland et al., 1995) both converge on
+    * Dr. Shiyuan Deng is the corresponding author.           a common principle: isolated experiences remain
+                                                        32353
+                 Findings of the Association for Computational Linguistics: ACL 2026, pages 32353–32376
+                              July 2-7, 2026 ©2026 Association for Computational Linguistics
+                                                                                                         100
+                                                                                                                                            81.10
+
+
+
+
+                                                                               Overall (LLM-as-Judge)
+                                                                                                          75 67.60       68.83
+                                                                                                                                   62.92
+                                                                                                          50
+                     …                                            Episodic
+                                                                  Memory
+                                                                                                          25
+                                                                                                           0 MemoryOS A-Mem       Mem0 RecMem
+                      …                                                                                             (c) Task accuracy
+
+
+
+
+                                                                               Consolidation Tokens(K)
+                                                                                                                      1459.9K    1520.8K
+                      …
+                                         Subconscious
+                                         Memory
+              …                                                                                            400.7K
+                                                                  Semantic                                                                 193.2K
+        Memory Modules                                            Memory
+                                                                                                         MemoryOS A-Mem          Mem0      RecMem
+ (a) Eager memory consolidation    (b) Recurrence-based consolidation (ours)                               (d) Memory construction cost
+
+Figure 1: Comparing RecMem with existing memory systems. (a) Existing systems conduct eager memory
+consolidation for every incoming interaction; (b) our RecMem conducts recurrence-based consolidation selectively
+from a subconscious memory; (c)-(d) task accuracy and memory construction cost on the LoCoMo benchmark.
+
+
+in transient or rapidly-encoded stores, and only re-       captured by the episodic memory, and distills them
+peated or recurring patterns drive consolidation into      into a semantic memory to avoid information loss.
+stable long-term memory. This principle directly              We empirically evaluate RecMem on two chal-
+motivates RecMem’s recurrence-driven consolida-            lenging long-term memory benchmarks (i.e., Lo-
+tion scheme.                                               CoMo (Maharana et al., 2024) and LongMemEval-
+   Motivated by these insights, we propose                 S (Wu et al., 2025)) and compare with three SOTA
+RecMem, an efficient memory system for long-               memory systems (i.e., Mem0 (Chhikara et al.,
+running agents that conducts fewer LLM-based               2025), A-Mem (Xu et al., 2025b), and Memo-
+memory consolidations in a recurrence-driven man-          ryOS (Kang et al., 2025)). The results show that
+ner. In particular, RecMem introduces a subcon-            RecMem yields higher question answering accu-
+scious memory layer that buffers the raw user-agent        racy than all baselines on both datasets while dras-
+interactions via lightweight embeddings, enabling          tically reducing the token cost for memory con-
+cost-effective retrieval without invoking LLMs.            struction. In particular, on the LoCoMo benchmark
+Memory consolidation is only conducted when an             in Figure 1(d), RecMem reduces the token con-
+incoming interaction can find a sufficient number          sumption by up to 7.8x over the baselines. More-
+of semantically similar or related interactions in         over, RecMem’s query-time token cost remains
+the subconscious memory, and LLMs are utilized             comparable to existing memory systems, so the
+to extract episodic summaries and semantic facts           construction-time savings translate into lower end-
+from these interactions. This works because these          to-end cost over long interaction histories.
+interactions form a semantic cluster with rich in-            Our contributions are summarized as follows:
+formation that is worth memory consolidation and              • We identify a fundamental inefficiency in ex-
+resembles generating long-term memory from tran-                 isting LLM memory systems, i.e., eager mem-
+sient memory in cognitive science.                               ory consolidation for every interaction leads
+   RecMem also incorporates a semantic refine-                   to a high memory construction token cost.
+ment mechanism to improve accuracy. Specifi-                  • Inspired by cognitive science, we propose
+cally, LLM-based extraction, especially event-level              recurrence-based consolidation to save to-
+episodic summarization, may omit fine-grained but                ken cost by conducting memory consolidation
+query-critical details, leading to lossy long-term               only when an incoming interaction can find a
+memory. Our semantic refinement revisits the raw                 sufficient number of semantically similar or
+interactions associated with each episodic memory,               related interactions.
+extracts the missing and persistent facts that are not        • We present RecMem, a three-tier memory ar-
+                                                        32354
+      chitecture that realizes this paradigm. Com-        Wang et al., 2025b) are orthogonal to our focus, as
+      bining a lightweight subconscious store with        they operate on top of a given memory architecture.
+      a novel semantic refinement mechanism,                 Most existing memory systems construct long-
+      RecMem achieves high accuracy while sub-            term memory by incrementally transforming in-
+      stantially reducing token cost.                     coming interactions (or short windows thereof)
+                                                          into retrievable memory units, such as sum-
+2     Preliminaries                                       maries (Kang et al., 2025; Packer et al., 2024;
+                                                          Zhong et al., 2023), atomic facts (Chhikara et al.,
+2.1    Problem Setting: Conversational Memory
+                                                          2025; Wang and Chen, 2025), or structured nodes
+Recent work on LLM-based agents increasingly fo-          (e.g., graphs/trees) (Hogan et al., 2021; Rasmussen
+cuses on conversational memory, where the agent           et al., 2025; Rezazadeh et al., 2025), and then rely
+accumulates information through long-term, multi-         on similarity-based retrieval or hybrid search (Kang
+turn interactions (Hu et al., 2025; Xu et al., 2025a;     et al., 2025; Rasmussen et al., 2025) to supply evi-
+Maharana et al., 2024). Formally, we denote the           dence at query time. We defer a detailed taxonomy
+interaction history available at time step t as a se-     of memory representations, retrieval mechanisms,
+quence O1:t = {o1 , . . . , ot }. Each interaction unit   and construction pipelines to Appendix A.
+ot is defined as a tuple:
+                                                          3     The RecMem Framework
+                  ot = (st , xt , τt )             (1)
+                                                          3.1    Overview
+where st ∈ {USER, ASSISTANT} represents the               RecMem is a three-tier memory system guided by
+speaker role, xt denotes the message content, and         the principle that not all interactions warrant LLM-
+τt is the timestamp. Given a query q, the objective       level consolidation. Incoming messages are first
+is to retrieve relevant evidence from an external         organized as atomic interaction units and written
+memory derived from O1:t to support reasoning             to a subconscious store with only lightweight struc-
+and response generation.                                  turing and vectorization, making the raw interac-
+   Although conversational settings may appear            tion history directly accessible through embedding-
+more specific than general memory scenarios, they         based retrieval (§3.2). Building on this store,
+capture a fundamental property of real-world de-          RecMem performs recurrence-based consolida-
+ployment: information arrives streamingly over            tion: instead of consolidating every turn, it invokes
+time, and the agent must continually manage an            LLM-based processing only when the system ob-
+ever-growing interaction history to support future        serves clear evidence that similar interaction con-
+queries and reasoning (Zhang et al., 2024). This for-     tent recurs, thereby reserving LLM invocation for
+mulation contrasts with retrieval-augmented gen-          cases where aggregation is likely to be beneficial.
+eration (RAG), which typically assumes static or          Once triggered, RecMem produces an episodic ab-
+pre-ingested knowledge sources (Lewis et al., 2021;       straction over the selected turns (§3.3), and then
+Han et al., 2025). In conversational memory, the          applies semantic refinement to recover fine-grained,
+key challenge is not retrieval, which can largely         reusable facts that may be omitted by episodic ab-
+leverage existing techniques, but how the system          straction, grounded in the episode and its underly-
+constructs and updates the underlying memory              ing interactions (§3.4). At query time, RecMem
+from ongoing interactions in an online manner.            retrieves a small budget of items from the subcon-
+                                                          scious, episodic, and semantic stores, and answers
+2.2 Memory Systems                                        by conditioning the LLM on the merged context
+We focus on training-free, text-based external mem-       (§3.5).
+ory systems for LLM agents in streaming conver-              Our use of episodic and semantic memory
+sational settings. For brevity, we refer to such sys-     follows the convention in previous LLM mem-
+tems as memory systems in the remainder of this           ory literature (Li and Li, 2024; Wang and Chen,
+paper. Parametric memory approaches (Fang et al.,         2025). Specifically, episodic memory in RecMem
+2025; Wang et al., 2025a) require retraining or ar-       stores temporally anchored event narratives, which
+chitectural modification to absorb new information        are coherent summaries of how a topic evolves
+and are thus less applicable in our setting (Hu et al.,   across multiple interaction turns, with explicit time
+2025), while RL-based methods (Yan et al., 2025;          grounding. Semantic memory stores atomic facts
+                                                     32355
+about general knowledge, user preferences, con-           These units, computed via the dense vector encoder
+straints, and entity relations.                           Φ(·), are immediately indexed into the subcon-
+   RecMem’s design mirrors human memory:                  scious memory store Ssub . This store is imple-
+most experiences remain unconsolidated unless re-         mented as a vector database to support efficient
+peatedly activated (Atkinson and Shiffrin, 1968;          semantic retrieval and incremental updates with-
+O’Reilly et al., 2014; McClelland et al., 1995). By       out the need for batching or access to future con-
+avoiding eager LLM-based consolidation of tran-           text. This fine-grained representation encourages
+sient interactions, RecMem substantially reduces          focused semantic embeddings at the level of indi-
+token consumption while preserving both event-            vidual interaction units, making it well-suited for
+level coherence and stable user-centric knowledge         streaming settings.
+as memories. To facilitate understanding, Ap-
+                                                          Recurrence-based Memory Consolidation
+pendix B provides a minimal running example that
+                                                          Echoing cognitive principles (Atkinson and
+walks through the memory ingestion workflow.
+                                                          Shiffrin, 1968; O’Reilly et al., 2014; McClelland
+                                                          et al., 1995), we propose recurrence-based
+3.2 Subconscious Memory
+                                                          consolidation: raw interactions are retained in the
+The subconscious memory manager maintains a               subconscious buffer, with LLM-based abstraction
+faithful record of interaction history at minimal         triggered only when retrieval signals indicate
+computational cost. A critical design consideration       sustained recurrence. Specifically, for a new
+here is the granularity at which conversational in-       arriving unit si = (vi , ui ), the system queries Ssub
+formation is represented. Existing systems adopt          to retrieve the set Ni containing the top-k units
+diverse ingestion strategies, ranging from process-       ranked by cosine similarity to vi . We then filter
+ing individual messages (Xu et al., 2025b; Wang           these candidates to define the relevant set based on
+and Chen, 2025; Rasmussen et al., 2025) or interac-       strict semantic proximity:
+tion pairs (Chhikara et al., 2025) to accumulating
+larger, fixed-size context buffers (Kang et al., 2025;          Ri = { sj ∈ Ni | cos(vi , vj ) ≥ θsim }.    (5)
+Packer et al., 2024). Static grouping or buffering           Consolidation is triggered only if the relevant
+may conflate temporally adjacent but semantically         set size meets a recurrence count threshold (i.e.,
+unrelated topics, diluting the specificity of embed-      |Ri | ≥ θcount ). In such cases, the cluster Ci =
+dings. Conversely, ingesting messages in isolation        Ri ∪ {si } is promoted to higher-level memory
+risks fragmenting the semantic context, as an assis-      modules including episodic memory and seman-
+tant’s response often relies heavily on the preceding     tic memory; otherwise, si remains in Ssub . This
+user query for its meaning.                               ensures consolidation is conducted exclusively in
+   To address these issues, RecMem treats each            memories with demonstrated long-term recurrence.
+message exchange (a user-assistant turn) as an
+atomic unit. Formally, we define a multi-turn con-        3.3   Episodic Memory
+versation between a user and an assistant with t          Episodic memory captures event-level structure
+turns as                                                  across multiple turns. To ensure memory remains
+                                                         compact, RecMem adopts a merge-first strategy.
+              Ht = u1 , u2 , . . . , ut ,          (2)    Upon the arrival of a subconscious unit si =
+                                       
+              ui = musr        ast
+                     i , mi , τi .                 (3)    (vi , ui ), we retrieve the nearest neighbor episode
+                                                          E ⋆ from the episodic store Sepi . Let vE ⋆ = Φ(E ⋆ )
+Here, ui represents an interaction unit at turn i,        denote the embedding of this episode. We strictly
+composed of the user message musr                         enforce an in-place update if semantic similarity
+                                      i , the assistant
+response mi , and a timestamp τi . The history Ht
+            ast                                           permits:
+is a time-ordered sequence of these units.                             E ⋆ ← LLMmerge (E ⋆ , ui )
+   As interaction units arrive in a streaming manner,                                                       (6)
+                                                                      if   cos(vi , vE ⋆ ) ≥ θsim ,
+each new message turn ui is processed indepen-
+dently. We formally define the constructed subcon-        where LLMmerge integrates the content of the new
+scious memory unit si as:                                 turn ui into the narrative of E ⋆ .
+                                                             Without such a merge-first step, each recurrence-
+       si = (vi , ui ) where      vi = Φ(ui ).     (4)    triggered consolidation on a topic would produce a
+                                                     32356
+fresh episode in parallel with existing ones on the          retrieve related existing semantic facts to provide
+same topic, fragmenting the episodic representation          historical context:
+of an evolving thread across multiple disconnected                                                
+                                                                         V = TopKk Ssem , Φ(E) .              (8)
+entries. Merge-first collapses these into a single
+continually-updated narrative, keeping the episodic          We then employ an LLM-based refiner to deduce
+store compact and the per-topic narrative coherent           new facts. Conditioned on the raw interaction units
+as the conversation evolves.                                 UC , the episodic summary E, and the retrieved facts
+   If merging is not applicable, the unit waits for the      V, the model is instructed to perform two parallel
+recurrence-based consolidation trigger. Given                tasks: (1) Detail Recovery, which scans the raw
+the triggered cluster Ci (from §3.2), we extract the         texts in UC to identify critical entities omitted by
+interaction units UC = {uj | (vj , uj ) ∈ Ci }. We           the summary E; and (2) Fact Maintenance, which
+then sort these units by their timestamps to form            prevents redundancy by filtering out known infor-
+a temporal sequence Uiseq = (u(1) , . . . , u(|Ci |) ) for   mation in V while updating evolving user states
+episodic memory consolidation. The consolida-                (e.g., preference changes).
+tion prompt is designed for inductive organization              The extraction process is formulated as:
+rather than simple summarization. The LLM pro-                                                         
+cesses the formatted sequence to synthesize coher-                      Msem
+                                                                           i   = LLMrefine E, UC , V .         (9)
+ent narratives, segmenting disparate sub-topics if              Each extracted fact f ∈ Msem     is stored as an
+                                                                                             i
+necessary:                                                   independent entry to preserve retrieval specificity.
+                                                           This design reduces redundancy and enables incre-
+                            |Ci |
+                            M
+       Mepi                      Fmt(u(k) ) . (7)          mental updates of user facts while keeping retrieval
+          i = LLMepi
+                             k=1                             efficient.
+
+Here, Fmt(·) denotes a fixed template that formats           3.5   Question Answering
+each interaction unit into a textual representation.         To generate an answer, RecMem first encodes the
+The output Mepii     is a set of new episodic units;         user query q into a vector representation vq = Φ(q)
+each episode E ∈ Mepi    i is then encoded via Φ(·)          and retrieves the most relevant entries from the
+and stored in Sepi . We provide a complete prompt            subconscious (Ssub ), episodic (Sepi ), and seman-
+list in Appendix F for reference.                            tic (Ssem ) stores. To manage the context window
+                                                             efficiently while ensuring diverse coverage, we en-
+3.4 Semantic Memory                                          force a fixed subconscious retrieval budget and cou-
+Semantic memory complements episodic memory                  ple the episodic and semantic budgets by setting
+by storing fine-grained facts that may be missed             ksem = 2kepi , yielding three context sets: Ksub ,
+by event-level summaries. It also mitigates a side           Kepi , and Ksem . The final answer is then generated
+effect of the merge-first strategy in episodic mem-          by conditioning the LLM on the retrieved contexts
+ory: as an episode absorbs more turns through re-            alongside the original query.
+peated merges, its summary necessarily becomes
+broader and more abstract, which can dilute its re-          3.6   Discussions
+trieval precision for queries that target a specific         Setting the hyper-parameters RecMem’s con-
+detail buried within that episode. Semantic memory           solidation behavior is controlled by two key hyper-
+counteracts this by storing the same details as inde-        parameters, i.e., similarity threshold θsim for rele-
+pendent, narrowly-scoped entries, so that precise            vant interactions and recurrence threshold θcount to
+factual queries can hit them directly without hav-           trigger consolidation. Larger θsim and θcount make
+ing to surface the entire encompassing episode. In           consolidation more conservative and favor more
+RecMem, we construct this memory layer through               frequent patterns, while lower thresholds make
+a process called Semantic Refinement. By strictly            consolidation more active and improve coverage
+tying semantic extraction to episodic construction,          for subtle details. According to empirical experi-
+this mechanism ensures that facts remain grounded            ences, we recommend θsim =0.7, θcount =5 for ca-
+in the current episodic context while explicitly re-         sual open-ended settings and θsim =0.6, θcount =4
+covering precise details that were abstracted away.          for longer and task-oriented interactions. For ques-
+   Formally, when a new episode E ∈ Mepi   i is gen-         tion answering, we fix the aggregate retrieval bud-
+erated from the source interaction units UC , we first       gets across the memory layers and use ksub =10,
+                                                        32357
+kepi =5, and ksem =10 (i.e., ksem =2kepi ) by default.   reasoning over evolving personal history. In con-
+Sensitivity experiments for the hyperparameters are      trast, LongMemEval-S (Wu et al., 2025) focuses
+conducted in Appendix C.                                 on agentic, task-oriented interactions with substan-
+                                                         tially longer contexts. Comprising 500 conversa-
+Robustness of threshold choice A natural con-
+                                                         tions averaging 115k tokens, it poses a rigorous
+cern is whether RecMem’s performance depends
+                                                         test for memory systems under realistic, high-load
+on precise threshold calibration. Our sensitivity
+                                                         user-assistant workflows. Detailed statistics and
+analysis in Appendix C shows that this is not
+                                                         question types of these two datasets are provided
+the case: overall accuracy varies smoothly and is
+                                                         in Appendix D.
+within a narrow band around the recommended
+defaults, so performance does not hinge on select-       Baselines We compare RecMem against various
+ing a brittle operating point. Within this robust        types of representative baselines:
+range, the thresholds instead serve as a strategic
+                                                         • Full Context, which feeds all historical interac-
+dial between memory selectivity and consolidation
+                                                           tions to the LLM for answering each question.
+sensitivity. Higher values of θsim and θcount ren-
+der RecMem more conservative, prioritizing high-         • Naive RAG, a standard RAG baseline that seg-
+confidence patterns suitable for casual open-ended         ments the interactions into chunks and retrieves
+conversations where signal is sparse and noise fil-        the relevant chunks based on embedding similar-
+tering matters. Conversely, lower thresholds make          ity. We employ a chunking strategy that respects
+the system more active in consolidation, ideal for         message integrity (see Appendix E.1).
+task-completion workflows where capturing subtle         • Mem0 (Chhikara et al., 2025) employs a fact-
+details is critical.                                       extraction pipeline to dynamically extract salient
+                                                           information from interactions and manage mem-
+Generality of recurrence-based consolidation               ory consistency via LLM-based update opera-
+Although RecMem organizes the episodic memory              tions (e.g., add,update, delete).
+and semantic memory as flat entries for similarity-
+                                                         • A-Mem (Xu et al., 2025b), an agentic memory
+based retrieval, recurrence-based consolidation is
+                                                           system inspired by the Zettelkasten note-taking
+a general idea and not limited to specific memory
+                                                           method (Kadavy, 2021; Ahrens, 2017), which
+structures. The key to recurrence-based consolida-
+                                                           organizes the interactions as discrete “memory
+tion is to utilize a cheap subconscious memory to
+                                                           notes" that are connected via entity linking to
+buffer the incoming interactions and trigger consol-
+                                                           facilitate associative retrieval.
+idation for higher memory layers based on recur-
+rence, and the higher memory layers can also adopt       • MemoryOS (Kang et al., 2025), an OS-inspired
+alternative structures (e.g., knowledge graph).            hierarchical framework that manages informa-
+                                                           tion via short-term, mid-term, and long-term
+4   Experimental Evaluation                                memory tiers. It also incorporates a dedicated
+                                                           module to maintain evolving user and agent per-
+4.1 Experiment Settings                                    sonas to enable personalized interactions.
+To ensure a fair and standardized comparison, we
+strictly adhere to the incremental evaluation pro-       Performance Metrics We compare RecMem
+tocol established in prior studies (Chhikara et al.,     with the baselines along two dimensions.
+2025; Xu et al., 2025b; Kang et al., 2025). In this      • Question answering accuracy. We report accu-
+setting, message turns are streamed sequentially           racy as the fraction of questions answered cor-
+into the memory system to mimic the natural flow           rectly. Following (Chhikara et al., 2025), we
+of ongoing dialogues (Hu et al., 2025), followed by        use GPT-4o-mini as an LLM judge and treat its
+multi-round query sessions.                                judgment score as the primary metric. We priori-
+Datasets We evaluate RecMem on two English                 tize this semantic evaluation over token-overlap
+benchmarks selected to represent distinct interac-         metrics like F1 score, which can under-estimate
+tion modalities: social companionship and long-            correctness for open-ended generation with para-
+context task completion. LoCoMo (Maharana                  phrases. For completeness, we also report F1
+et al., 2024) features companion-style, life-sharing       and a comparison in Appendix E.4. All reported
+dialogues, consisting of 10 multi-session conversa-        task scores are averaged over three runs.
+tions (avg. 16k tokens) with questions that probe        • Computation efficiency. We measure LLM to-
+                                                    32358
+         Category             FullContext Naive RAG MemoryOS        Mem0     A-Mem RecMem (Ours)
+         GPT-4 O - MINI
+         Multi-Hop              69.86      54.61        58.87       52.84    52.13      72.70
+         Temporal               52.96      24.30        44.24       52.02    61.99      57.32
+         Open Domain            55.21      51.04        46.88       37.50    30.21      58.33
+         Single-Hop             90.01      57.55        74.55        65.52   66.83      79.79
+         Overall                76.43      49.68        63.64        58.64   60.84      72.47
+         Construct Token(K)       0.0        0          429.7       1233.5   1143.3     202.4
+         Query Token(K)          31.5       6.23         4.88         1.99    3.04       2.73
+         GPT-4.1- MINI
+         Multi-Hop              82.62      58.87        66.31        58.16   59.93      78.37
+         Temporal               79.13      33.96        47.66        63.86   72.90      75.39
+         Open Domain            57.29      50.00        55.21        44.79   42.71      57.29
+         Single-Hop             90.84      61.24        77.05        66.23   73.25      86.92
+         Overall                84.18      54.42        67.60        62.92   68.83      81.10
+         Construct Token(K)      0.00       0.00        400.7       1520.80 1459.93     193.2
+         Query Token(K)         31.52       6.28         5.04         2.11    5.56       2.75
+
+     Table 1: Results on the LoCoMo benchmark. Bold and underline mark the best and second accuracies.
+
+      Category                 FullContext Naive RAG MemoryOS         Mem0     A-Mem RecMem (Ours)
+      GPT-4 O - MINI
+      Single-User                 44.29       85.71        97.14       95.71   92.54      91.43
+      Single-Assistant            80.36       83.93        89.29       55.36   98.21       85.71
+      Single-Preference            53.33      46.67        70.00       70.00   36.67      46.67
+      Temporal-Reasoning          34.59       41.35        48.87       54.14   44.36      61.65
+      Knowledge-Update            55.13       65.38         73.08      69.23   70.51       80.77
+      Multi-Session               35.34       52.63         58.65      57.89   53.38      56.39
+      Overall                     45.60       59.40          67.8      64.00   63.80       69.20
+      Construct Token(K)           0.00        0.00        705.34     1244.87 1180.23     329.55
+      Query Token(K)              112.30      11.92          8.89       1.90   13.10       5.63
+      GPT-4.1- MINI
+      Single-User                  91.43      85.71        94.29       95.71   95.71      95.71
+      Single-Assistant            100.00      82.36        89.29       50.00  100.00      96.43
+      Single-Preference            56.67      83.33          100       90.00   63.33      86.67
+      Temporal-Reasoning          48.12       45.86        54.89       62.41   52.63      68.42
+      Knowledge-Update             75.64      75.64         80.77      74.36   82.05       75.64
+      Multi-Session                53.38      63.91         67.67      69.92   61.65       65.41
+      Overall                      66.20      67.00          74.4      71.20   71.60       76.80
+      Construct Token(K)            0.00       0.00        669.22     1626.54 1264.25     365.49
+      Query Token(K)              112.25      11.93          9.19       2.00   15.46       5.89
+
+ Table 2: Results on the LongMemEval-S benchmark. Bold and underline mark the best and second accuracies.
+
+
+  ken usage (input plus output) in two phases: (1)     detailed experiment settings are in Appendix E.
+  construction cost, averaged per conversation dur-
+  ing memory ingestion, and (2) query cost, aver-      4.2      Main Results
+  aged per question during answering.
+                                                       Tables 1 and 2 demonstrate that RecMem offers a
+Implementation Details To evaluate the gener-          strong efficiency–performance trade-off compared
+alization of our approach, we conduct experiments      to prior memory systems. For each task, we high-
+using two distinct LLM backends: GPT-4o-mini           light the best result in bold and the second-best
+and GPT-4.1-mini. To ensure fair comparison,           result with underlining. Across both benchmarks
+for any given benchmark result, RecMem and all         and backbone models, RecMem substantially re-
+baselines share the identical underlying model ver-    duces construction-time token consumption while
+sion. For LLM calls, we set temperature=0.0 and        preserving competitive end-task performance, in-
+utilize text-embedding-3-small for vector embed-       dicating that eager consolidation is not required to
+ding generations. For RecMem, we configure the         achieve effective long-term memory. We empha-
+recurrence-based consolidation thresholds to adapt     size that our goal is not to dominate every individ-
+to the distinct interaction densities of each bench-   ual task category, but rather to achieve the highest
+mark: θsim = 0.7, θcount = 5 for LoCoMo, and           overall accuracy among memory systems under a
+θsim = 0.6, θcount = 4 for LongMemEval-S. More         drastically reduced construction-cost budget.
+                                                   32359
+LoCoMo. On LoCoMo with GPT-4.1-mini,                                       No Subconscious   Direct Extraction   RecMem (Ours)
+                                                                           No Semantic       No Episodic
+RecMem uses only 193.2K construction tokens                              100
+on average, compared to 1520.8K for Mem0 and                                                       79.94 81.10
+1459.9K for A-Mem, corresponding to reductions                            75           70.58 74.22
+
+
+
+
+                                                         Overall Score
+of 87.3% and 86.8%, respectively. A similar re-                                51.88
+duction pattern holds for GPT-4o-mini. Despite                            50
+this drastic decrease in construction cost, RecMem
+achieves the highest overall score among memory-                          25
+based methods, indicating that recurrence-based
+memory consolidation can retain strong long-term                           0
+memory performance while avoiding the system-                      Figure 2: Ablation study for RecMem on LoCoMo
+atic overhead of processing every turn through
+the LLM. We also note that Full Context slightly
+outperforms RecMem on LoCoMo, which is con-                 co-referent mentions regardless of temporal dis-
+sistent with LoCoMo’s relatively short conversa-            tance, and timestamp-sorted episodic consolidation
+tions (approximately 16K tokens per conversa-               (§3.3) reconstructs chronological order within each
+tion) where full-context inference remains feasible.        cluster. Semantic refinement additionally extracts
+However, as shown in table 2, this behavior does            time-anchored facts grounded in the raw interac-
+not generalize to substantially longer settings.            tion units, serving as a second safeguard for fine-
+                                                            grained temporal evidence that episodic abstraction
+LongMemEval-S. A similar but more complex                   may compress away.
+pattern emerges on LongMemEval-S, where con-
+versations are substantially longer and closer to            Construction vs. query cost. RecMem’s effi-
+real-world long-lived agents. With GPT-4.1-mini,             ciency gains comes from reducing construction-
+RecMem reduces construction tokens by 77.5% rel-             time LLM usage. Query-time token consumption
+ative to Mem0 and 71.1% relative to A-Mem, while             stays within a comparable range across memory-
+achieving the best overall score among all evalu-            based methods under our evaluation protocol be-
+ated methods, including Full Context and RAG.                cause they retrieve a similar order of evidence for
+   At the category level, different systems exhibit          answering, whereas construction-time usage di-
+complementary strengths, and we do not claim a               verges sharply depending on how frequently and
+universal winner across all question types. Impor-           how heavily a method invokes LLM processing dur-
+tantly, RecMem is not designed to dominate every             ing ingestion. In streaming deployments where new
+category in isolation; rather, it targets robust over-       turns arrive continually, these construction-time dif-
+all capability with much smaller construction-cost           ferences accumulate over time and can dominate
+budget. Our results support this goal: despite large         total LLM usage, making construction a critical
+reductions in construction tokens, RecMem attains            and often overlooked cost driver.
+the best overall score on LongMemEval-S.
+                                                             4.3           Ablation Study
+   Beyond the aggregate metric, RecMem’s clear-
+est and most consistent gains appear on temporal            We conduct an ablation study to quantify the con-
+reasoning, where long-range dependencies are cen-           tribution of each RecMem module by disabling
+tral. We argue this is a structural consequence of          one component at a time. Figure 2 reports results
+recurrence-based consolidation rather than an ar-           on LoCoMo using GPT-4.1-mini as the backbone
+tifact of tuning. Temporal reasoning requires two           model. For each testing target, we maintain the
+capabilities: cross-time linking of co-referent men-        retrieval budget for the non-ablated modules to en-
+tions, and reconstructing their chronological order.        sure fairness.
+Eager consolidation systems are disadvantaged on               As shown in figure 2, overall, removing any
+the former: by committing to summary boundaries             module reduces performance, indicating that the
+at each turn or local buffer, they anchor later men-        three-tier design is complementary. The largest
+tions of an evolving topic to different summaries,          drop occurs when removing subconscious memory
+fragmenting the thread. RecMem addresses both               (81.10 → 51.88). This sharp degradation is ex-
+capabilities by construction: similarity-based clus-        pected because subconscious memory is the only
+tering in subconscious memory (§3.2) aggregates             faithful carrier of raw interaction units: information
+                                                    32360
+that does not trigger recurrence-based consolida-        5   Conclusion
+tion remain exclusively in the module, thus dis-
+abling it eliminates access to a substantial fraction    We present RecMem, an efficiency-aware mem-
+of query-relevant evidence.                              ory system for long-running LLM agents that chal-
+                                                         lenges the prevailing paradigm of eager memory
+   We observe an asymmetric contribution between         consolidation. By explicitly modeling raw inter-
+episodic and semantic memory. Removing episodic          actions within a lightweight subconscious mem-
+memory causes only a small drop (81.10 → 79.94),         ory and deferring LLM-based abstraction until
+whereas removing semantic memory yields a larger         triggered by recurrence, RecMem demonstrates
+but still bounded drop (81.10 → 70.58). This             that high-fidelity long-term memory does not ne-
+asymmetry reflects their division of labor under         cessitate exhaustive processing of every interac-
+semantic refinement: episodic memories mainly            tion. Across LoCoMo and LongMemEval-S, this
+capture high-level structure and cross-turn linkage,     strategy substantially reduces memory construc-
+while semantic memories prioritize fine-grained          tion cost while preserving competitive task perfor-
+factual details. Since semantic refinement explic-       mance. More broadly, RecMem reframes memory
+itly recovers details omitted by episodic abstrac-       consolidation as a dynamic, recurrence-driven pro-
+tion and stores them as semantic facts, semantic         cess. We hope this work encourages the community
+memory can partially cover missing evidence when         to reconsider when and why information should be
+episodic memory is removed; in contrast, episodic        consolidated in long-running agent tasks, and to
+summaries can only weakly substitute for the de-         treat computational cost as a first-class criterion
+tailed facts lost without semantic memory, leading       when evaluating future memory systems.
+to the larger degradation.
+                                                         6   Limitations
+   To isolate the effect of semantic refinement, we
+evaluate a Direct Extraction variant that extracts       Despite the empirical strengths and efficiency gains
+semantic facts directly from raw conversations,          of RecMem, several limitations merit discussion.
+without using episodic memories as a reference for
+detecting omitted details. At inference time, this       Dependence        on     Heuristic    Thresholds.
+variant answers using only subconscious retrieval        RecMem relies on static similarity (θsim )
+and the extracted semantic facts. We remove the          and recurrence thresholds (θcount ) to govern the
+refinement-specific guidance tied to episodic sum-       consolidation process. While our experiments
+maries in semantic extraction prompt and leave the       demonstrate that these parameters can be tuned
+other parts intact. The score drops from 79.94 to        to accommodate different interaction densities
+74.22, showing that episodic memory provides an          (e.g., casual conversation vs. task completion),
+essential reference signal for semantic refinement,      they currently remain manually specified. This
+improving semantic memory quality beyond naive           dependency means RecMem may benefit from
+fact extraction from raw dialogue.                       threshold recalibration when deploying to domains
+                                                         with substantially different interaction densities,
+                                                         although Appendix C shows that such recalibration
+                                                         can be coarse rather than precise. Developing
+Additional Experiments Beyond the consoli-               adaptive or learnable triggering mechanisms that
+dation thresholds discussed above, we conduct            dynamically adjust to user behavior is a promising
+three additional sets of analyses to characterize        direction for future work.
+RecMem’s behavior. Appendix C.1 provides a full
+sensitivity analysis of the consolidation hyperpa-       Recurrence as a Proxy for Salience. Our de-
+rameters θsim and θcount , examining both accuracy       sign is predicated on the assumption that informa-
+and construction cost. Appendix C.2 studies the          tion worthy of long-term abstraction tends to recur.
+retrieval-side budgets ksub , kepi , and ksem to iden-   While this aligns with many cognitive theories and
+tify how much evidence is needed at query time.          conversational patterns, it may risk overlooking
+Appendix E.4 additionally reports F1 scores for          rare but critical events—such as a one-off safety
+completeness, along with a discussion of why we          instruction or a unique user constraint—that appear
+treat LLM-as-Judge as the primary metric for open-       only once. To mitigate this risk, the subconscious
+ended generation.                                        memory layer functions as a persistent safety net:
+                                                    32361
+every interaction unit is preserved verbatim and re-      Yunhao Fang, Weihao Yu, Shu Zhong, Qinghao Ye,
+mains directly retrievable at query time, regardless        Xuehan Xiong, and Lai Wei. 2025. Artificial hip-
+                                                            pocampus networks for efficient long-context model-
+of whether it has been consolidated. Nevertheless,
+                                                            ing. Preprint, arXiv:2510.07318.
+non-recurring content does not benefit from the
+cross-turn linking of episodic memory or the fact-        Daya Guo, Qihao Zhu, Dejian Yang, Zhenda Xie, Kai
+level refinement of semantic memory, which may              Dong, Wentao Zhang, Guanting Chen, Xiao Bi,
+                                                            Y. Wu, Y. K. Li, Fuli Luo, Yingfei Xiong, and Wen-
+weaken reasoning over these details. Developing             feng Liang. 2024. Deepseek-coder: When the large
+a lightweight salience signal beyond pure recur-            language model meets programming – the rise of
+rence to promote rare but high-value events is a            code intelligence. Preprint, arXiv:2401.14196.
+promising direction for future work.                      Haoyu Han, Yu Wang, Harry Shomer, Kai Guo, Ji-
+                                                            ayuan Ding, Yongjia Lei, Mahantesh Halappanavar,
+7   Ethical Considerations                                  Ryan A. Rossi, Subhabrata Mukherjee, Xianfeng
+                                                            Tang, Qi He, Zhigang Hua, Bo Long, Tong Zhao,
+We evaluate RecMem only on publicly available               Neil Shah, Amin Javari, Yinglong Xia, and Jiliang
+benchmarks in an offline setting, and we do not             Tang. 2025. Retrieval-augmented generation with
+deploy or test it in real user-facing applications.         graphs (graphrag). Preprint, arXiv:2501.00309.
+Nevertheless, long-term memory mechanisms can             Aidan Hogan, Eva Blomqvist, Michael Cochez, Clau-
+raise dual-use concerns: when integrated into real          dia D’amato, Gerard De Melo, Claudio Gutierrez,
+applications, persistent memory may be misused              Sabrina Kirrane, José Emilio Labra Gayo, Roberto
+for profiling or surveillance beyond the intended           Navigli, Sebastian Neumaier, Axel-Cyrille Ngonga
+                                                            Ngomo, Axel Polleres, Sabbir M. Rashid, Anisa Rula,
+personalization benefits. We therefore recommend
+                                                            Lukas Schmelzeisen, Juan Sequeda, Steffen Staab,
+that practical deployments incorporate clear user-          and Antoine Zimmermann. 2021. Knowledge graphs.
+facing disclosures and safeguards such as access            ACM Computing Surveys, 54(4):1–37.
+controls and user-controllable deletion/retention
+                                                          Yuanzhe Hu, Yu Wang, and Julian McAuley. 2025. Eval-
+policies.                                                   uating memory in llm agents via incremental multi-
+   A second risk arises from unintended harms               turn interactions. Preprint, arXiv:2507.05257.
+due to incorrect memory. Errors in consolida-
+                                                          Xun Jiang, Feng Li, Han Zhao, Jiahao Qiu, Jiaying
+tion or retrieval can surface outdated or spuri-            Wang, Jun Shao, Shihao Xu, Shu Zhang, Weiling
+ous details and lead to overconfident but incorrect         Chen, Xavier Tang, Yize Chen, Mengyue Wu, Weizhi
+responses, which may be consequential in high-              Ma, Mengdi Wang, and Tianqiao Chen. 2025. Long
+stakes settings. We encourage future work to in-            term memory: The foundation of ai self-evolution.
+                                                            Preprint, arXiv:2410.15665.
+corporate uncertainty-aware retrieval, confidence
+calibration, and monitoring against memory poi-           Jeff Johnson, Matthijs Douze, and Hervé Jégou. 2017.
+soning or prompt-injection attempts.                         Billion-scale similarity search with gpus. Preprint,
+                                                             arXiv:1702.08734.
+   Finally, RecMem reduces unnecessary LLM in-
+vocations compared to eager extraction baselines,         David Kadavy. 2021. Digital Zettelkasten: Principles,
+which can lower compute and associated environ-             Methods, & Examples. Kadavy, Incorporated.
+mental footprint when operating over long interac-        Jiazheng Kang, Mingming Ji, Zhe Zhao, and Ting
+tion histories.                                              Bai. 2025. Memory os of ai agent. Preprint,
+                                                             arXiv:2506.06326.
+                                                          Dharshan Kumaran, Demis Hassabis, and James L. Mc-
+References                                                  Clelland. 2016. What learning systems do intelligent
+S. Ahrens. 2017. How to Take Smart Notes: One Simple        agents need? complementary learning systems theory
+   Technique to Boost Writing, Learning and Thinking –      updated. Trends in Cognitive Sciences, 20(7):512–
+   for Students, Academics and Nonfiction Book Writers.     534.
+   Sönke Ahrens.
+                                                          Patrick Lewis, Ethan Perez, Aleksandra Piktus, Fabio
+Richard C. Atkinson and Richard M. Shiffrin. 1968.          Petroni, Vladimir Karpukhin, Naman Goyal, Hein-
+  Human memory: A proposed system and its con-              rich Küttler, Mike Lewis, Wen tau Yih, Tim Rock-
+  trol processes. In The psychology of learning and         täschel, Sebastian Riedel, and Douwe Kiela. 2021.
+  motivation.                                               Retrieval-augmented generation for knowledge-
+                                                            intensive nlp tasks. Preprint, arXiv:2005.11401.
+Prateek Chhikara, Dev Khant, Saket Aryan, Taranjeet
+  Singh, and Deshraj Yadav. 2025. Mem0: Building          Jitang Li and Jinzheng Li. 2024. Memory, con-
+  production-ready ai agents with scalable long-term         sciousness and large language model. Preprint,
+  memory. Preprint, arXiv:2504.19413.                        arXiv:2401.02509.
+                                                     32362
+Bang Liu, Xinfeng Li, Jiayi Zhang, Jinlin Wang, Tanjin     Yu Wang, Ryuichi Takanobu, Zhiqi Liang, Yuzhen
+  He, Sirui Hong, Hongzhang Liu, Shaokun Zhang,              Mao, Yuanzhe Hu, Julian McAuley, and Xiaojian Wu.
+  Kaitao Song, Kunlun Zhu, Yuheng Cheng, Suyuchen            2025b. Mem-α: Learning memory construction via
+  Wang, Xiaoqiang Wang, Yuyu Luo, Haibo Jin, Peiyan          reinforcement learning. Preprint, arXiv:2509.25911.
+  Zhang, Ollie Liu, Jiaqi Chen, Huan Zhang, and 29
+  others. 2025. Advances and challenges in foundation      Di Wu, Hongwei Wang, Wenhao Yu, Yuwei Zhang,
+  agents: From brain-inspired intelligence to evolu-         Kai-Wei Chang, and Dong Yu. 2025. Longmemeval:
+  tionary, collaborative, and safe systems. Preprint,        Benchmarking chat assistants on long-term interac-
+  arXiv:2504.01990.                                          tive memory. Preprint, arXiv:2410.10813.
+
+Nelson F. Liu, Kevin Lin, John Hewitt, Ashwin Paran-       Derong Xu, Yi Wen, Pengyue Jia, Yingyi Zhang, wenlin
+  jape, Michele Bevilacqua, Fabio Petroni, and Percy         zhang, Yichao Wang, Huifeng Guo, Ruiming Tang,
+  Liang. 2023. Lost in the middle: How language mod-         Xiangyu Zhao, Enhong Chen, and Tong Xu. 2025a.
+  els use long contexts. Transactions of the Association     From single to multi-granularity: Toward long-term
+  for Computational Linguistics, 12:157–173.                 memory association and selection of conversational
+                                                             agents. Preprint, arXiv:2505.19549.
+Adyasha Maharana, Dong-Ho Lee, Sergey Tulyakov,            Wujiang Xu, Zujie Liang, Kai Mei, Hang Gao, Juntao
+  Mohit Bansal, Francesco Barbieri, and Yuwei Fang.         Tan, and Yongfeng Zhang. 2025b. A-mem: Agentic
+  2024. Evaluating very long-term conversational            memory for llm agents. Preprint, arXiv:2502.12110.
+  memory of llm agents. Preprint, arXiv:2402.17753.
+                                                           Sikuan Yan, Xiufeng Yang, Zuchao Huang, Ercong
+James L. McClelland, Bruce L. McNaughton, and Ran-           Nie, Zifeng Ding, Zonggen Li, Xiaowen Ma, Kris-
+  dall C. O’Reilly. 1995. Why there are complementary        tian Kersting, Jeff Z. Pan, Hinrich Schütze, Volker
+  learning systems in the hippocampus and neocortex:         Tresp, and Yunpu Ma. 2025. Memory-r1: Enhanc-
+  insights from the successes and failures of connec-        ing large language model agents to manage and uti-
+  tionist models of learning and memory. Psychologi-         lize memories via reinforcement learning. Preprint,
+  cal review, 102 3:419–457.                                 arXiv:2508.19828.
+Randall C. O’Reilly, Rajan Bhattacharyya, Michael D.       Zeyu Zhang, Xiaohe Bo, Chen Ma, Rui Li, Xu Chen,
+  Howard, and Nicholas Ketz. 2014. Complementary             Quanyu Dai, Jieming Zhu, Zhenhua Dong, and Ji-
+  learning systems. Cognitive Science, 38(6):1229–           Rong Wen. 2024. A survey on the memory mecha-
+  1248.                                                      nism of large language model based agents. Preprint,
+                                                             arXiv:2404.13501.
+Charles Packer, Sarah Wooders, Kevin Lin, Vivian Fang,
+  Shishir G. Patil, Ion Stoica, and Joseph E. Gonzalez.    Wanjun Zhong, Lianghong Guo, Qiqi Gao, He Ye, and
+  2024. Memgpt: Towards llms as operating systems.          Yanlin Wang. 2023. Memorybank: Enhancing large
+  Preprint, arXiv:2310.08560.                                language models with long-term memory. Preprint,
+                                                             arXiv:2305.10250.
+Preston Rasmussen, Pavlo Paliychuk, Travis Beauvais,
+  Jack Ryan, and Daniel Chalef. 2025. Zep: A tempo-        A     Detailed Taxonomy of Memory
+  ral knowledge graph architecture for agent memory.             Systems
+  Preprint, arXiv:2501.13956.
+                                                           In this section, we provide a structured taxonomy
+Alireza Rezazadeh, Zichao Li, Wei Wei, and Yujia Bao.      of existing memory systems, focusing on two criti-
+  2025. From isolated conversations to hierarchical
+  schemas: Dynamic tree memory representation for          cal dimensions: memory consolidation (how raw
+  llms. Preprint, arXiv:2410.14052.                        interactions are transformed into long-term storage)
+                                                           and retrieval mechanisms (how relevant informa-
+Zhihong Shao, Peiyi Wang, Qihao Zhu, Runxin Xu,            tion is accessed during query time).
+  Junxiao Song, Xiao Bi, Haowei Zhang, Mingchuan
+  Zhang, Y. K. Li, Y. Wu, and Daya Guo. 2024.              A.1    Memory Consolidation Paradigms
+  Deepseekmath: Pushing the limits of mathemati-
+  cal reasoning in open language models. Preprint,         Memory consolidation transforms raw interaction
+  arXiv:2402.03300.                                        streams into retrievable long-term storage, as de-
+                                                           scribed in §1. A critical commonality across ex-
+Yu Wang and Xi Chen. 2025. Mirix: Multi-agent
+  memory system for llm-based agents. Preprint,            isting works is their reliance on an eager consoli-
+  arXiv:2507.07957.                                        dation strategy. In these systems, every incoming
+                                                           interaction—regardless of its informational value
+Yu Wang, Dmitry Krotov, Yuanzhe Hu, Yifan Gao,             or redundancy—eventually triggers an LLM-driven
+  Wangchunshu Zhou, Julian McAuley, Dan Gutfre-
+  und, Rogerio Feris, and Zexue He. 2025a. M+: Ex-
+                                                           processing pipeline. This approach assumes that
+  tending memoryllm with scalable long-term memory.        all user inputs require active structuring or abstrac-
+  Preprint, arXiv:2502.00592.                              tion, incurring constant computational overhead to
+                                                      32363
+maintain the memory state. We categorize these                2. MemoryOS (Kang et al., 2025): Features a
+paradigms by their consolidation targets:                        multi-tiered architecture (Short-, Mid-, and
+                                                                 Long-term memories) to manage context flow,
+Graph and Structure-based Consolidation.
+                                                                 emphasizing a dedicated Profile Memory mod-
+These systems treat memory construction as a con-
+                                                                 ule that explicitly maintains evolving user per-
+tinuous structural maintenance task. Upon receiv-
+                                                                 sonas and agent guidelines.
+ing a new message, the system must compute em-
+beddings, identify entities, and execute structural           3. Mirix (Wang and Chen, 2025): Routes ev-
+updates (e.g., creating nodes or re-balancing trees)             ery interaction through a parallel extraction
+to integrate the new information into the existing               pipeline. Raw text is simultaneously pro-
+topology.                                                        cessed by distinct modules to distill specific
+  1. A-Mem (Xu et al., 2025b): Inspired by the                   "Knowledge" facts and "Event" summaries,
+     Zettelkasten method (Kadavy, 2021; Ahrens,                  creating a synchronized update across multi-
+     2017), it treats interactions as discrete "notes"           ple memory stores.
+     in a network, where consolidation involves
+                                                              4. MemGPT (Packer et al., 2024): Treats mem-
+     generating embeddings and establishing asso-
+                                                                 ory management as an operating system pro-
+     ciative links between new and existing notes.
+                                                                 cess, employing self-directed function calls
+  2. TreeMem (Rezazadeh et al., 2025): Maintains                 to actively summarize and compress ongoing
+     a hierarchical summary tree. New information                interactions into a fixed-size "Core Memory"
+     is not just appended but traverses down to spe-             block, ensuring key persona and user details
+     cific leaf nodes based on semantic relevance,               are preserved while offloading raw history.
+     forcing a recursive chain of summary updates
+     from the leaf back up to the root to keep the         A.2    Retrieval Mechanisms
+     hierarchy consistent.                                 While memory consolidation determines how infor-
+                                                           mation is stored, retrieval mechanisms define how
+  3. Zep (Rasmussen et al., 2025): Parses inter-
+                                                           relevant context is accessed to support reasoning.
+     actions into a "Temporal Knowledge Graph."
+                                                           Existing approaches range from simple semantic
+     It actively extracts entities and relationships
+                                                           matching to complex, structure-aware traversal al-
+     from each turn, modeling them as nodes and
+                                                           gorithms.
+     edges while explicitly updating the temporal
+     metadata of these connections.                        Dense Vector Retrieval This prevalent paradigm
+                                                           relies on high-dimensional embeddings to mea-
+  4. Mem0 (Graph Variant) (Chhikara et al., 2025):
+                                                           sure semantic overlap, commonly utilizing vector
+     Extends atomic fact extraction by organizing
+                                                           databases like FAISS (Johnson et al., 2017) for ef-
+     data into a graph. It requires per-turn analysis
+                                                           ficient similarity search. A representative system
+     to identify multi-hop relationships between
+                                                           is Mem0 (Chhikara et al., 2025), which retrieves
+     entities, dynamically updating the graph struc-
+                                                           relevant atomic facts by computing the cosine sim-
+     ture as the conversation evolves.
+                                                           ilarity between the query and stored embeddings,
+Fact and Summary-based Consolidation These                 selecting the top-k entries based purely on semantic
+systems function as active distillers, where the           relevance scores.
+LLM is invoked at every turn (or small buffer inter-
+                                                           Structure-Aware Retrieval These systems lever-
+vals) to parse information into compressed formats.
+                                                           age the topological structure established during
+The goal is to immediately strip away redundancy
+                                                           consolidation (graphs or trees) to expand retrieval
+and store only the event summaries or extracted
+                                                           beyond simple similarity. TreeMem (Rezazadeh
+facts.
+                                                           et al., 2025) utilizes a top-down tree pruning strat-
+  1. Mem0 (Chhikara et al., 2025): Runs a dedi-            egy; starting from the root, it evaluates child nodes
+     cated extraction pipeline after every user mes-       based on their summaries and prunes irrelevant
+     sage. It prompts the LLM to identify atomic           branches to efficiently narrow the search to specific
+     facts (e.g., entity-relation triplets), instructing   leaf nodes. Similarly, A-Mem (Xu et al., 2025b)
+     it to add, update, or delete records in the vec-      employs associative retrieval: upon locating an ini-
+     tor database to reflect the latest state.             tial "note" via vector search, it traverses established
+                                                      32364
+                      Conversations                                                                       RecMem Storages
+
+
+                                                    1
+          I’m ordering a birthday cake for my
+          sister: vanilla 8-inch, peanut allergy,
+          pickup Fri 6pm at SweetLeaf. What                   Subconscious write (no LLM).
+          should I ask?                                                                                           Episodic    Semantic
+                                                                                                  Subconscious
+                                                                                                                  Memory       Memory
+                                                                                                  Memory
+
+                  Ask for a peanut-free process with
+                  cross-contamination precautions,
+                  and request no nut toppings.
+
+
+
+
+                                                    2
+                                                               Low similarity score with cake
+          What’s the best wash setting for                     cluster, no consolidation
+          dark jeans?                                                                             Subconscious
+                                                               triggered. Subconscious write.     Memory
+                                                                                                                   Episodic    Semantic
+                 Cold water, gentle cycle, inside-out,                                                             Memory       Memory
+                 and avoid high-heat drying to reduce
+                 fading.
+
+
+
+
+                                                    3
+          Draft a short message to
+          SweetLeaf. Add: “Happy
+          Birthday, Mia” and not too
+                                                               Topic recurred for cake cluster.                    Episodic    Semantic
+          sweet.                                                                                   Subconscious
+                                                               Recurrence-based consolidation                      Memory       Memory
+                                                                                                   Memory
+                                                               triggers
+                  Hi SweetLeaf—can I order an 8-inch
+                  vanilla cake for pickup Fri 6pm? The
+                  recipient has a peanut allergy—
+                  please ensure peanut-free handling
+                  and no nut toppings. Please write
+                  ‘Happy Birthday, Mia’ and keep it
+                                                                                                                    Semantic Refinement
+                  not too sweet. Thank you.
+                                                         Recurrence-based memory consolidation
+
+
+
+                                  Figure 3: A simplified memory ingestion process in RecMem
+
+
+entity links to fetch connected notes, mimicking                        concise, we present only the recurrence-triggered
+the human ability to associate disparate memories                       construction path, and therefore omit the merge-
+through shared concepts.                                                first episodic in-place update.
+
+Hybrid Retrieval To mitigate the precision lim-
+                                                                        Turn 1: subconscious write without consolida-
+itations of pure vector search (e.g., missing exact
+                                                                        tion. The user first asks for suggestions to order a
+keyword matches), some systems adopt a multi-
+                                                                        birthday cake. RecMem ingests this user–assistant
+metric strategy. MemoryOS (Kang et al., 2025)
+                                                                        exchange as one interaction unit and appends it to
+implements a weighted hybrid retrieval mecha-
+                                                                        the subconscious memory. Since the “cake” topic
+nism. Instead of relying on a single metric, it cal-
+                                                                        has been observed only once so far, the correspond-
+culates a unified relevance score by linearly com-
+                                                                        ing set Ri does not satisfy the recurrence condition
+bining Cosine similarity (for semantic understand-
+                                                                        |Ri | ≥ θcount , and thus no LLM-based consolida-
+ing) and Jaccard similarity (for exact keyword over-
+                                                                        tion is triggered. Instead, RecMem computes a
+lap). This approach ensures that specific entities
+                                                                        lightweight embedding for this unit and stores it to-
+are recalled even if their semantic embeddings are
+                                                                        gether with the raw text in the subconscious vector
+distant, balancing fuzzy semantic matching with
+                                                                        index, enabling efficient similarity-based retrieval
+precise lexical matching.
+                                                                        in future turns.
+B    Running Example
+                                                                        Turn 2: no recurrence under the similarity
+We briefly illustrate RecMem’s ingestion-time be-                       check. The user then switches to an unrelated
+havior with a minimal three-turn interaction in Fig-                    topic (washing dark jeans). RecMem uses the new
+ure 3. For clarity, we set the recurrence threshold to                  unit’s embedding to retrieve relevant turns from the
+θcount = 2: consolidation is triggered once a topic                     subconscious store, and then forms Ri by keeping
+is observed in at least two interaction units after                     only those with similarity above the topical thresh-
+passing the topical-similarity check. For simplicity,                   old. The cake-related unit from Turn 1 is unrelated
+we do not expand the exact similarity threshold                         to this turn thus |Ri | = 1 and consolidation is not
+here and use natural language describe when two                         triggered. The new turn is then stored in subcon-
+turns are treated as relevant. To keep the example                      scious store.
+                                                                 32365
+                     Impact of Similarity Threshold ( sim)                            Impact of Recurrence Count ( count)                                    Token Consumption vs. count
+                81                             Default (0.7)                                                    Default (5)                        300                              Default (5)
+
+
+
+
+                                                                                                                              Consumed Tokens(K)
+                                                                               81.0
+
+
+
+
+                                                               Overall Score
+Overall Score
+
+                                                                               80.5                                                                250
+                80
+                                                                               80.0
+                79                                                             79.5                                                                200
+                                                                               79.0
+                78                                                                                                                                 150
+                     0.60 0.65 0.70 0.75 0.80 0.85                                    3       4          5      6         7                              3        4          5      6         7
+                                         sim                                                            count                                                               count
+
+                                   (a)                                                            (b)                                                                 (c)
+
+  Figure 4: Sensitivity of consolidation thresholds on LoCoMo (GPT-4.1-mini). (a) Overall score vs. θsim . (b) Overall
+  score vs. θcount . (c) Memory-construction token consumption vs. θcount .
+
+
+  Turn 3: recurrence-based consolidation and se-                                                         function of the episodic budget, ksem = 2kepi .
+  mantic refinement. When the user returns to the                                                           To ensure fair comparison and isolate causal ef-
+  cake topic, the new unit retrieves prior cake-related                                                  fects, in each experiment we vary only one target
+  unit(s) and passes the similarity check θsim . Since                                                   hyperparameter and freeze all others to the default
+  the recurrence count now satisfies |Ri | ≥ θcount ,                                                    LoCoMo configuration. Unless otherwise stated,
+  RecMem triggers consolidation and produces two                                                         we use θcount =5 and θsim =0.7 for consolidation,
+  complementary artifacts. Episodic memory ab-                                                           and ksub =10, kepi =5 (thus ksem =10) for retrieval.
+  stracts the recurring turns into a coherent, intent-                                                   When sweeping kepi , we update ksem accordingly
+  level narrative—e.g., the user is preparing a birth-                                                   via ksem = 2kepi , while keeping all remaining hy-
+  day cake order for their sister Mia, and the assistant                                                 perparameters fixed. All experiments in this section
+  recommends an allergy-safe ordering strategy. This                                                     are conducted on LoCoMo using GPT-4.1-mini as
+  abstraction focuses on high-level event summary                                                        the backbone model.
+  but may compress away valuable details. Seman-
+  tic refinement preserves such details by extracting                                                    C.1    Consolidation Hyperparameters
+  atomic facts from the underlying raw turns, such                                                       We study two consolidation-stage thresholds that
+  as: (i) the user has a sister named Mia; (ii) Mia is                                                   govern demand-driven memory promotion: the
+  allergic to peanuts; and (iii) the user plans to place                                                 similarity threshold θsim , which controls how inter-
+  an order at SweetLeaf with concrete cake/message                                                       action units are clustered in subconscious memory,
+  specifications. Semantic refinement also uses re-                                                      and the recurrence threshold θcount , which controls
+  lated existing semantic memories to assist extrac-                                                     when a cluster is consolidated into episodic/seman-
+  tion, but we omit this aspect here to keep the exam-                                                   tic memories.
+  ple minimal.
+                                                                                                         Impact of θsim . As shown in Figure 4a, θsim
+  C                  Hyperparameter Analysis                                                             exhibits a clear peak around the default setting
+                                                                                                         θsim =0.7. When θsim is too low, semantically unre-
+ In this section, we conduct a sensitivity analysis of                                                   lated interactions are merged into the same cluster,
+ RecMem’s key hyperparameters under a controlled-                                                        reducing topical coherence and making the down-
+ variable protocol. We organize the discussion into                                                      stream summarization step noisier. Conversely,
+ two parts: (i) consolidation-stage thresholds, in-                                                      when θsim is too high, related interactions are frag-
+ cluding the recurrence count threshold (θcount ) and                                                    mented across multiple small clusters, weakening
+ the similarity threshold (θsim ), which determine                                                       recurrence signals and delaying (or preventing) con-
+ when interaction clusters are promoted from sub-                                                        solidation for genuinely recurring topics. Overall,
+ conscious memory to higher-level episodic and                                                           the sharp optimum suggests that the best choice
+ semantic memories; and (ii) retrieval-stage bud-                                                        on LoCoMo is unambiguous and that RecMem is
+ geting, where we cap the number of retrieved                                                            reasonably robust in the neighborhood of θsim =0.7.
+ items from each memory tier to control context
+ length. For retrieval, we treat the subconscious and                                                    Impact of θcount : quality–cost trade-off. Fig-
+ episodic budgets (ksub , kepi ) as the only free hyper-                                                 ure 4b and Figure 4c highlight a more explicit
+ parameters, and set the semantic budget as a fixed                                                      effectiveness–efficiency tension for θcount . Lower
+                                                                                                  32366
+                     Impact of Retrieval Budget (ksub)                                        Impact of Retrieval Budget (kepi)
+                80                                                                      84                              Default (5)
+                                                                                        82
+
+
+
+
+                                                                        Overall Score
+Overall Score
+
+
+                70                                                                      80
+                                                                                        78
+                60
+                                                                                        76
+                                                 Default (10)
+                                                                                        74
+                     0 2 5      10          15     20      25                                12   5     10         15   20        25
+                                     ksub                                                                       kepi
+                                 (a)                                                                      (b)
+
+  Figure 5: Sensitivity of retrieval budgets on LoCoMo (GPT-4.1-mini). (a) Overall score vs. subconscious retrieval
+  budget ksub . (b) Overall score vs. episodic budget kepi with ksem = 2kepi .
+
+
+ θcount triggers consolidation earlier, so each con-               the subconscious and episodic budgets (ksub , kepi )
+ solidation event typically includes fewer raw in-                 as the only free retrieval hyperparameters, and set
+ teraction units. This smaller consolidation context               the semantic budget deterministically as ksem =
+ can better preserve fine-grained details (less com-               2kepi . Thus, sweeping kepi implicitly scales the
+ pression pressure during episodic abstraction), but               total retrieved memory volume, while sweeping
+ it is also more aggressive and therefore increases                ksub isolates the contribution of raw, fine-grained
+ construction-time token consumption due to more                   interaction evidence.
+ frequent consolidations. Accordingly, token cost                     Figure 5a and Figure 5b show a consistent
+ decreases smoothly as θcount increases (Figure 4c).               diminishing-returns trend: increasing retrieval bud-
+     In contrast, the performance curve is not smooth:             gets yields substantial gains at small values, but
+ we observe a clear degradation when increasing                    improvements become marginal as budgets grow.
+ θcount from 5 to 6 (Figure 4b), while the corre-                  We therefore adopt compact defaults that retain
+ sponding token reduction remains comparatively                    most of the performance benefit while limiting re-
+ gradual. We attribute this drop to two compound-                  trieved context length, setting ksub =10 and kepi =5
+ ing factors at higher thresholds: (i) consolidation               (thus ksem =10).
+ becomes overly conservative, leaving some recur-
+ ring patterns insufficiently represented in episod-               D          Evaluation Datasets
+ ic/semantic memory at query time; and (ii) once
+                                                                   This section provides detailed specifications and
+ consolidation is finally triggered, the accumulated
+                                                                   preprocessing protocols for the two benchmarks
+ cluster is larger, which increases summarization
+                                                                   used in our experiments: LoCoMo (Maharana et al.,
+ difficulty and raises the likelihood that salient de-
+                                                                   2024) and LongMemEval-S (Wu et al., 2025).
+ tails are omitted or poorly organized (even with
+ semantic refinement). Taken together, these results
+                                                                   D.1             LoCoMo
+ indicate that θcount =5 is the best operating point on
+ LoCoMo: it retains the accuracy benefits of earlier,              LoCoMo (Long-Context Memory) is a benchmark
+ detail-preserving consolidation while avoiding un-                designed to evaluate memory systems in casual,
+ necessary consolidation overhead, and it prevents                 social settings. Unlike standard user-agent inter-
+ the disproportionate quality loss observed at more                actions, the source texts consist of multi-session
+ conservative threshold setting like θcount =6 (81.1               human-to-human dialogues between two distinct
+ vs 78.9).                                                         speakers, simulating the natural evolution of a long-
+                                                                   term relationship.
+  C.2 Retrieval Hyperparameters
+                                                                   Data Statistics. The dataset consists of 10 in-
+ We next analyze the retrieval-stage budgets that                  dependent, human-annotated conversations. Each
+ control how much evidence is surfaced from each                   conversation spans multiple sessions, simulating a
+ memory tier at query time. Recall that we treat                   relationship that evolves over time.
+                                                                32367
+   • Total Conversations: 10                            Task Categories. To assess memory capabilities
+                                                        at a granular level, the benchmark stratifies queries
+   • Average Length: ≈ 16,000 tokens per con-           into six distinct types:
+     versation
+                                                            1. Single-session-user: Evaluates the retrieval
+   • Total Questions (Used): 1,540                             of specific details explicitly mentioned by the
+   • Dialogue Style: Casual, multi-turn, life-                 user within the bounds of a single conversa-
+     sharing, highly contextual.                               tion session.
+
+Task Categories. The benchmark originally in-               2. Single-session-assistant: Tests the system’s
+cludes five question categories. Following stan-               ability to recall information provided by the
+dard protocols established in prior works (Chhikara            assistant itself within a single session, ensur-
+et al., 2025; Kang et al., 2025; Wang and Chen,                ing consistency in the agent’s own history.
+2025), we evaluate on the first four categories and
+                                                            3. Single-session-preference: Assesses whether
+exclude the adversarial set:
+                                                               the model can effectively apply retrieved user
+  1. Single-hop Retrieval: Questions requiring                 information to generate personalized, context-
+     the retrieval of a specific fact mentioned in a           aware responses.
+     single past session.
+                                                            4. Multi-session: Requires the aggregation of
+  2. Multi-hop Reasoning: Questions that require               disjoint pieces of information scattered across
+     synthesizing information distributed across               two or more sessions to derive a complete
+     multiple distinct sessions to derive an answer.           answer.
+
+  3. Temporal Reasoning: Questions testing the              5. Knowledge-update: Probes the system’s ca-
+     system’s ability to understand the sequence of            pacity to track dynamic changes in the user’s
+     events and relative time expressions.                     life state and supersede outdated information
+                                                               with new updates.
+  4. Open-domain Knowledge: Questions that
+     require combining memory retrieval with ex-            6. Temporal-reasoning: Demands chronologi-
+     ternal world knowledge.                                   cal deduction by synthesizing both the session
+                                                               metadata (timestamps) and explicit time ex-
+  5. Adversarial (Excluded): Questions designed                pressions found in the text.
+     to trick the model with false premises. We ex-
+     clude this category as it lacks reliable ground-   E     Experiment Details
+     truth answers for automated evaluation.
+                                                        E.1     Baseline Configurations
+D.2 LongMemEval-S
+                                                        To ensure fair and reliable comparisons, we con-
+LongMemEval-S is a subset of the LongMemEval            figure each baseline to faithfully reflect its original
+benchmark, curated to evaluate memory systems in        design choices, rather than enforcing a unified in-
+agentic, task-oriented interactions with long con-      gestion or prompting pipeline. Below, we describe
+text windows.                                           the implementation and prompting decisions used
+                                                        in our experiments in details.
+Data Statistics. Unlike the social nature of Lo-
+CoMo, LongMemEval-S features functional inter-             To enable a fair comparison of computational
+actions where the user seeks specific assistance.       costs, we instrumented all baseline codebases with
+                                                        unified token-tracking logic while leaving their
+   • Total Conversations: 500                           core memory components intact. For the LoCoMo
+                                                        benchmark, all memory-system baselines consid-
+   • Average Context Length: ≈ 115k tokens              ered in this work provide official implementations.
+     (approx. 30–40 sessions).                          We therefore reuse their original prompts and eval-
+   • Total Questions: 500                               uation code without modification.
+                                                           For the LongMemEval-S benchmark, where
+   • Dialogue Style: Task-oriented, high informa-       standardized reference implementations are not
+     tion density.                                      available, we implement the evaluation pipeline
+                                                   32368
+while preserving each method’s ingestion strategy      shared answer template across methods, so that
+as used in its LoCoMo setup. Concretely, we adopt:     performance differences primarily reflect the un-
+(i) A-Mem’s per-message ingestion, (ii) Mem0’s         derlying memory mechanisms rather than prompt
+dual-speaker ingestion with two messages per turn,     engineering. For the Full-Context and RAG-2048
+and (iii) MemoryOS’s ingestion based on user–          baselines, we also use the same answering prompt
+assistant QA pairs. We make this choice to re-         as RecMem for consistency.
+spect the baselines’ intended memory abstractions;        Because RecMem and MemoryOS both adopt
+forcing all methods to share RecMem’s ingestion        multi-module memory architectures, their answer-
+logic would conflate design differences and bias       ing prompts include a short module description that
+the comparison.                                        clarifies the roles of different memory sources. For
+   For A-Mem and MemoryOS, they both have two          MemoryOS, we retain the prompt format used in
+official codebases and we adopt the ones used in       its LoCoMo implementation. For RecMem, we in-
+their paper (Xu et al., 2025b; Kang et al., 2025)      clude a brief module-role description to prevent the
+to ensure reproduction of the reported setting. For    answer agent from double-counting overlapping ev-
+Mem0, we use its local-deployment version to en-       idence retrieved from different modules. Baselines
+able token-consumption tracking. We also disable       with a single memory source do not require such
+graph construction, as Mem0 reports that its graph     clarification and therefore use only the shared main
+variant can lead to a performance drop (Chhikara       prompt body.
+et al., 2025).
+   For the RAG-2048 baseline, we adopt a conser-       E.4   Discussion on F1 Score
+vative chunking strategy that preserves message in-    While the F1 score is one of the standard metrics
+tegrity: we never split a message across two chunks.   in prior works (Xu et al., 2025b; Kang et al., 2025;
+Messages are accumulated sequentially until the        Chhikara et al., 2025), measuring token-level ex-
+chunk reaches the 2048-token budget. If adding the     act matching, we observed it to be unreliable for
+next message would exceed this limit, we still in-     evaluating long-context memory systems where
+clude the entire message (rather than truncating it)   semantic correctness is paramount. F1 score penal-
+to preserve semantic completeness, and then start a    izes correct answers that differ in phrasing from the
+new chunk from the subsequent message.                 ground truth. For instance, if the ground truth is
+                                                       “16 March, 2023”, and the model generates “Gina
+E.2   Evaluation Prompt Consistency                    opened her online clothing store on 2023-03-16”,
+To ensure a fair and standardized comparison, we       the F1 score approaches 0 despite the answer be-
+strictly enforce prompt consistency across all eval-   ing factually correct. Consequently, we prioritize
+uated methods. For any given dataset, the exact        LLM-as-Judge in our main analysis.
+same evaluation prompt is employed for the LLM            For LoCoMo, many prior evaluations treat F1 as
+judge across all baselines and RecMem, ensuring        a primary metric and enforce strict output-length
+that performance differences originate solely from     constraints (e.g., “the answer should be less than
+the memory systems’ capabilities rather than vari-     5 words”) to optimize token overlap. To maintain
+ations in the evaluation criteria. Specifically, our   comparability with these reporting conventions, we
+prompt sources are as follows:                         retain such length constraints when evaluating on
+                                                       this dataset. For transparency, we additionally re-
+LongMemEval-S : We adopt the official eval-
+                                                       port the resulting F1 scores in Table 3. In contrast,
+uation prompt provided by the benchmark au-
+                                                       for LongMemEval-S, since all methods utilize a
+thors (Wu et al., 2025) without modification.
+                                                       shared prompt body, we remove these artificial con-
+LoCoMo : We follow the evaluation protocol es-         straints to avoid penalizing valid, grounded answers
+tablished in previous work (Chhikara et al., 2025),    that may exceed rigid word counts.
+which adapts the evaluation prompt elements origi-
+nally designed by MemGPT (Packer et al., 2024).        E.5   Retrieval Top-K
+                                                       For RAG-2048, we set the retrieval top-K to 3 on
+E.3   Answer Prompt Consistency                        LoCoMo, reflecting its relatively short conversa-
+For LoCoMo, we use each baseline’s original an-        tion length, and to 5 on LongMemEval-S, where
+swering prompt. For LongMemEval-S, we use the          conversations are longer and often require aggre-
+main body of RecMem’s answering prompt as a            gating evidence across more chunks. As shown by
+                                                  32369
+     Metrics              F1 Score Judge Score            Episodic memory generation prompt. Fig-
+     GPT-4 O - MINI
+     Full Context          0.423         76.4             ures 6–8 show the role/goal description, instruc-
+     Naive Rag             0.309         49.7             tions, and required output format for episodic mem-
+     MemoryOS              0.456        63.6              ory generation.
+     Mem0                  0.429        58.6
+     AMem                  0.364         60.8
+     RecMem(Ours)          0.385        72.47
+                                                          Semantic memory generation prompt. Fig-
+     GPT-4.1- MINI                                        ures 9–11 present the corresponding components
+     Full Context          0.507        84.8              for semantic memory generation.
+     Naive Rag             0.337        54.4
+     MemoryOS              0.445        67.6              Episodic memory merging prompt. Figures 12–
+     Mem0                  0.428        62.9
+     AMem                  0.440        69.7              14 provide the prompt used to merge newly consol-
+     RecMem(Ours)          0.469        81.1              idated content into existing episodic memories.
+
+ Table 3: F1 score and llm judge score on LoCoMo.         Answer prompt. Figures 15 and 16 report the
+                                                          role/goal and instruction components of the answer
+                                                          prompt used during evaluation.
+the query-token statistics in Tables 2 and 1, these
+settings allow the RAG baseline to retrieve a com-        G    Licenses and Terms of Use
+parable amount of information to other methods
+                                                          Licenses. We use publicly released benchmarks
+under similar query-time budgets.
+                                                          under their original licenses: LoCoMo (CC BY-NC
+   For all other baselines, we keep their re-
+                                                          4.0) and LongMemEval-S (MIT License). We do
+trieval budgets consistent across LoCoMo and
+                                                          not redistribute these datasets; instead, we refer
+LongMemEval-S, following their default design
+                                                          readers to their official releases. For baselines, we
+choices. Concretely, A-Mem retrieves 10 mem-
+                                                          use publicly available implementations under the
+ory notes. Mem0 retrieves 60 memory facts in to-
+                                                          licenses stated in their official repositories (Mem0:
+tal. MemoryOS retrieves all memories from short-
+                                                          Apache License 2.0; A-Mem: MIT License; Mem-
+term memory, together with 10 memories from mid-
+                                                          oryOS: Apache License 2.0). We do not repackage
+term memory, 5 memories from long-term memory,
+                                                          or redistribute third-party artifacts beyond what is
+as well as its qualified assistant knowledge and user
+                                                          permitted by their original licenses.
+knowledge components.
+   A special case is Mem0 on LoCoMo: since Lo-            Terms of Use. LoCoMo and LongMemEval-S
+CoMo includes dual-speaker question types, Mem0           were released as research benchmarks for evaluat-
+retrieves 30 facts per speaker (i.e., 60 total) to bal-   ing conversational assistants. We use them strictly
+ance coverage across user and assistant perspec-          in the intended offline evaluation setting, following
+tives. In contrast, LongMemEval-S is dominated by         the benchmark protocols. We do not redistribute
+user-centric questions, with relatively few assistant-    the datasets and only report aggregated results, con-
+centric queries. Therefore, while keeping the total       sistent with their stated licenses and access condi-
+budget fixed at 60, we allocate 45 retrieved facts        tions. RecMem is evaluated on these benchmarks,
+to the user side and 15 to the assistant side, which      but its core mechanisms are applicable to a broader
+better reflects Mem0’s intended strengths under the       class of long-running conversational agent settings
+LongMemEval-S query distribution.                         and can be integrated into practical systems. Real-
+                                                          world deployment should be adapted to the target
+F   LLM Prompts                                           workflow and comply with applicable data licens-
+                                                          es/terms and usage conditions.
+This appendix reports the primary prompts used in
+R EC M EM, including (i) episodic memory gener-
+ation, (ii) episodic memory merging, (iii) seman-
+tic memory generation, and (iv) the final answer
+prompt. To improve readability and facilitate repro-
+duction, we present each prompt in figures instead
+of inline text. Each memory-related prompt follows
+a consistent structure with three components: (a) a
+role and goal specification, (b) detailed instructions,
+and (c) explicit output-format constraints.
+                                                     32370
+You are an Episodic Memory Constructor for a long-term memory system used by an LLM-based agent.
+
+Your input:
+- A list of chat message turns separated by '-'. Each chat message turn has:
+  - One message turn between two speakers (contains one message per speaker),
+  - a timestamp (when the message turn was written),
+  - the message text.
+- All messages in the input are loosely related to one broad theme, but they may contain several
+distinct subtopics and span multiple days or weeks.
+
+Your task:
+- Convert these messages into a small number of coherent episodic memories ("episodes").
+- Each episode should describe how ONE subtopic evolves over time across multiple messages and
+timestamps.
+
+Global principles:
+- Be user-centric: focus on the real people who are actually having the conversation (the main user and
+the assistant / other named speakers).
+- Prioritize what these speakers are doing, planning, feeling, or learning, rather than the internal
+details of stories, examples, or long explanations they mention.
+- Treat fictional, hypothetical, or example scenarios (stories inside the conversation, sample
+dialogues, illustrative anecdotes) as background. Only include them if they clearly reveal something
+about the speakers' own preferences, goals, constraints, or knowledge.
+
+
+
+
+                           Figure 6: Episodic Memory Generation Role Description
+
+
+
+
+1. Identify topic threads
+- First, mentally group the messages into topic threads.
+- Messages belong to the same thread if they refer to the same ongoing goal, project, problem, or situation for the
+conversation participants, even if they are days or weeks apart.
+- Ignore or down-weight one-off fictional or hypothetical stories that do not affect the speakers' own situation.
+- If the input contains multiple independent threads, you may produce one episode per thread.
+- Prefer 1–3 episodes in total. Do NOT create many tiny episodes.
+2. Build temporal structure for each episode
+- For each thread that has enough information, order the relevant events chronologically. - Highlight how the situation
+develops over time: initial situation, updates, changes of plan, decisions, outcomes, and reflections. - Emphasize how
+the speakers' state (plans, preferences, beliefs, emotional reactions) evolves, not the blow-by-blow content of long
+stories or explanations. - Use connective phrases like "Initially", "Later", "Afterwards", "Eventually", "As a result" to
+make the temporal progression explicit. - Whenever possible, each episode should summarize information from at least TWO
+different message timestamps. Avoid episodes that just restate a single message.
+3. Handle time expressions correctly
+- The timestamp of a message is the time when the user said it. It is NOT always the time when the described event
+happened.
+- If a message uses relative time expressions such as "yesterday", "two days ago", "next week", rewrite them in your
+episode as explicit expressions relative to the timestamp. For example:- "the day before 2025-02-03“ -"two days after
+2025-05-10“ - "later in the same week as 2025-03-01"
+- You do NOT need to compute calendar dates (e.g., you do not need to turn "the day before 2025-02-03" into "2025-02-
+02").- IMPORTANT: In your final output, NEVER use vague relative time expressions without an anchor. Avoid words like
+"yesterday", "tomorrow", "last week", "next week", or "in two days" unless you clearly specify what timestamp or date
+they are relative to. - It is acceptable to use coarse ranges such as "later that week" or "over the following days after
+2025-03-01" as long as the temporal order is unambiguous.
+4. Focus on episodic narratives, not isolated facts
+- Your goal is to construct narrative episodes: what happened, how it evolved, and why it matters to the user.
+- Focus on the outer conversation between the two speakers (their goals, decisions, preferences, constraints, and what
+has been explained to them).
+- When a speaker tells a long story, gives an extended example, or pastes long external text, summarize this very
+compactly (e.g., "the assistant told a story about X to illustrate Y") unless the detailed content is central to the
+speakers' own situation.
+- Do NOT try to list every long-term preference or stable fact about the user. A separate semantic memory extractor will
+handle persistent facts and knowledge.
+- You may mention important preferences or facts inside an episode if they are relevant to understanding the story, but
+you do not need to optimize for completeness.
+
+
+
+
+                               Figure 7: Episodic Memory Generation Instruction
+
+
+
+
+                                                         32371
+5. Style and output format
+- Write each episode as a short, well-formed paragraph (3 to 6 sentences) in
+clear, neutral language.
+- Keep episodes compact. Do not reproduce long fictional plots, full technical
+explanations, or long lists; refer to them briefly if needed.
+- Prefer merging related events into a single episode over splitting them into
+many small episodes.
+- If there is not enough coherent information for a given subtopic, you may
+    skip creating an episode for it.
+Return ONLY a JSON object in the following format:
+{
+  "episodes": [
+    "First episodic memory paragraph...",
+    "Second episodic memory paragraph..."
+  ]
+}
+If you cannot form any meaningful episode, return:
+
+{
+  "episodes": []
+}
+Messages:
+{{subconscious_memories}}
+
+Output:
+
+
+
+
+                        Figure 8: Episodic Memory Output Format
+
+
+
+You are a Semantic Memory Extractor for a long-term memory system. Inputs:
+- Subconscious Memory R: the original detailed messages that are related
+- Episodic memory E: a short narrative summary generated from the raw reference R.
+- Old semantic memories S: previously stored facts about the topic related to E.
+Goal:
+Extract NEW, HIGH-UTILITY facts that will help answer future questions about the
+users.*IMPORTANT*: Prioritize concrete details from R that are missing or strongly compressed
+in E.
+Core principles:
+1) USER-CENTRIC: Focus on the user's goals, preferences, constraints, decisions, actions, and
+recurring plans.
+2) TEMPORALLY GROUNDED: For events and changes, include an explicit date anchor when
+available.
+3) COMPACT BUT USEFUL: Output less than 10 facts. Fewer, higher-value facts are better than
+many low-value facts.
+Each fact MUST belong to one of these types:
+1) USER_EVENT
+   - The user asked for something, attended something, started or stopped something, or made
+a concrete decision.
+   - Include a date anchor from R if possible, e.g., "On 2023-05-22, the user ...".
+2) USER_CONSTRAINT_OR_PREFERENCE
+   - A relatively stable preference, constraint, or recurring plan (e.g., long-term goals,
+platform choice, budget range, time constraints, content or style preferences).
+3) TIME_ANCHORED_UPDATE
+   - A change in behavior, preferences, tools, roles, budgets, relationships, etc.
+   - State the new value and, if known, the old value or state, with a clear time anchor.
+4) ENTITY_RELATION (USER-RELEVANT)
+   - A specific relationship between named entities that is relevant to the user (e.g., the
+user's roles, organizations, projects, courses, tools, locations, or other people they
+interact with).
+   - Only keep such a fact if it is specific and likely to matter in future reasoning about
+the user.
+Do NOT output generic best-practice tips, long checklists, or broad explanations unless they
+are clearly framed as what this user has done, is doing, or plans to do.
+
+
+
+
+                 Figure 9: Semantic Memory Generation Role Description
+
+                                           32372
+Time handling:
+ - When expressing time, use explicit or anchored expressions such as:
+   - "in March 2025", "on 2025-03-10",
+   - "two days after 2025-03-10",
+   - "later in the same week as 2025-04-01".
+ - You do NOT need to compute calendar arithmetic; describing offsets like "two
+days after <date>" is fine.
+ - IMPORTANT: In the final facts, NEVER use vague, unanchored relative time words
+such as: "yesterday", "tomorrow", "last week", "next week", "next month", "in two
+days“ unless you clearly specify what date or event they are relative to.
+
+Novelty and updates:
+- A fact is NOT new if it expresses the same meaning as any item in S,
+  even with different wording.
+- Keep a fact only if it is specific, self-contained (no ambiguous pronouns),
+plausibly useful for future reasoning, and not semantically equivalent to S.
+- If a fact refines, updates, or contradicts an item in S (e.g., preference,
+role, tool, relationship, or budget change), keep it as a TIME_ANCHORED_UPDATE
+that clearly states the change.
+
+If you have more than 8–10 candidate facts, select those that are:
+- Most time-anchored,
+- Most clearly missing or compressed in E,
+
+
+
+                 Figure 10: Semantic Memory Generation Instruction
+
+
+
+
+               Style:
+               - One fact per sentence.
+               - Neutral, factual tone.
+               - Do NOT speculate beyond what E, R, and S
+               support.
+               - Avoid long lists; summarize them into a single
+                 concise fact when possible.
+
+               Output format:
+               Return ONLY a JSON object:
+               {
+                 "facts": [
+                   "First new semantic fact...",
+                   "Second new semantic fact..."
+                 ]
+               }
+               If there are no new facts, return:
+               {
+                 "facts": []
+               }
+               Episodic Memory:
+               {{episodic_memory}}
+
+               Subconscious Memory Reference:
+               {{raw_reference}}
+
+               Old Semantic Memories:
+               {{old_semantic_memories}}
+
+
+                     Figure 11: Semantic Memory Output Format
+
+
+
+                                      32373
+             You are an Episodic Memory Merger for a long-term memory system.
+
+             Global principles:
+             - Be user-centric: focus on the real people who are having the conversation (the
+             main user and the assistant or other named speakers).
+             - Prioritize their real-world goals, projects, constraints, decisions, and
+             emotional states.
+             - Treat fictional, hypothetical, or example scenarios mentioned inside the
+             conversation as background context. Only consider them central if they clearly
+             matter for the speakers' own situation.
+
+             Goal:
+             You are given exactly TWO inputs:
+             - one NEW memory piece, derived from a recent conversation snippet,
+             - one PAST episodic memory piece, previously stored.
+             Your job is to decide whether these two pieces describe the same ongoing topic
+             or episode, and if so, produce ONE updated episodic memory that integrates both.
+
+             Your tasks:
+             1. Decide whether the new memory piece and the past memory piece describe the
+             same ongoing topic or episode for the conversation participants.
+             2. If yes, merge them into ONE coherent episodic memory and return the merged
+             result.
+
+
+
+                                   Figure 12: Episodic Merging Role Description
+
+
+
+
+When to merge:
+Treat the new and past memory pieces as strongly related (should_merge = "yes") if MOST of the following hold:
+- They describe the same ongoing situation, goal, project, problem, or life event for the same main person(s) in the
+conversation (user, assistant, or other real participants), not just similar fictional stories or generic examples.
+- The new piece clearly adds follow-up details, clarifications, corrections, or outcomes to what the past piece already
+describes, instead of starting a new, separate topic.
+- A human reader, after reading only these two pieces, would naturally describe them as different parts of one story about
+those conversation participants, not as two unrelated stories.
+Special case: new piece is only from the assistant
+- Sometimes the new memory piece mainly contains a long answer or explanation from the assistant, with little or no user text.
+- If this assistant-only piece mostly consists of generic background information, universal tips, or a long example/story that
+could apply to many people, and it does NOT clearly update or resolve the specific situation in the past memory, you should
+NOT merge.
+- You may still merge an assistant-only piece when it explicitly continues the same concrete situation as in the past memory
+  (for example, by referring to the same plan, constraint, or previous decision of the user, and by providing the next step,
+  revision, or outcome for that situation). If the two pieces only share superficial elements (e.g., they mention the same
+  domain or concept but refer to different user problems or different episodes), or if their overlap is mainly about similar
+  example stories, hypothetical scenarios, or generic explanations that do not change the speakers' own situation, you should
+  NOT merge. If you are uncertain whether they refer to the same ongoing topic, prefer "no" for should_merge.
+How to merge (if related) If you decide to merge:
+- Preserve the important details from BOTH the past memory and the new memory.
+- Organize the merged memory in temporal order so that the narrative is easy to follow.
+- Emphasize how the speakers' situation, plans, beliefs, or preferences evolve over time, rather than reproducing long
+internal stories or technical explanations.
+- Make the logical relation explicit using phrases like "later", "afterwards", "as a result", "eventually", etc.
+- Keep the merged memory compact. Do not copy long fictional plots, full technical explanations, or long lists; refer to them
+briefly if needed (e.g., "the assistant told a story about X to illustrate Y").
+- Handle time expressions carefully:
+  - Keep numeric timestamps or explicit dates as the ground truth (do not change their values).
+  - Rewrite vague relative time words like "yesterday", "last week", "tomorrow", "next month", "in two days“ into anchored
+expressions relative to a date mentioned in the input, for example: "the day before 2 January 2024", "two days after 2025-03-
+10", "later in the same week as 2025-04-01".
+  - You do NOT need to compute calendar arithmetic (e.g., you do not need to turn "the day before 2 January 2024" into "1
+January 2024").
+- Do NOT invent new events or details that are not supported by either piece.
+
+
+
+
+                                      Figure 13: Episodic Merging Instruction
+
+
+
+
+                                                           32374
+                The merged memory should remain a single, coherent paragraph of episodic
+                narrative, not a list of bullet points.
+
+                --------------------
+                Output format
+                --------------------
+                Return ONLY a JSON object of the form:
+
+                {
+                  "should_merge": "yes" or "no",
+                  "merged_memory": "merged memory piece if should_merge is yes,
+                otherwise an empty string"
+                }
+                Now process the following input.
+
+
+                <New Memory Piece>:
+                {{new_memory}}
+
+                <Past Memory Piece>:
+                {{past_memory}}
+
+                Output:
+
+
+
+                             Figure 14: Episodic Merging Output Format
+
+
+
+
+You are an intelligent memory assistant tasked with answering questions using conversation
+memories.
+
+# CONTEXT
+You have access to memories from two speakers in a conversation. These memories are timestamped and
+may be relevant to the question.
+
+There are three types of memories:
+1. Episodic Memories: refined summaries of related conversation turns about the same topic.
+2. Semantic Memories: concise, fact-like pieces extracted from conversations.
+3. Subconscious Memories: unprocessed conversation snippets between the two speakers.
+
+Context Rules:
+1. Episodic and semantic memories may overlap in content (event summary vs. atomic facts). Avoid
+double-counting redundant evidence.
+2. Carefully analyze all three memory types and identify information that is actually useful for
+answering the question.
+3. Memories within each type are sorted by relevance.
+
+
+
+                                Figure 15: Answering Role Description
+
+
+
+
+                                                 32375
+# INSTRUCTIONS
+1. Carefully read all provided memories.
+2. Pay close attention to timestamps when time is relevant.
+3. If the question asks about a specific event or fact (who / where / when / what), look for direct,
+explicit evidence in the memories.
+4. If the question asks for advice, recommendations, or what kind of response the user would prefer,
+   - first identify any user-specific preferences, habits, constraints, or past actions from the
+memories,
+   - then base your suggestion primarily on these user-specific signals,
+   - and only fall back to generic advice when no relevant user information exists.
+5. If memories contain contradictory information, prioritize the most recent memory.
+6. For time references (e.g., "last year", "two months ago"), convert them into concrete dates based on
+the memory timestamp. For example, if a memory from 4 May 2022 says "went to India last year", infer
+that the trip happened in 2021, and answer with "2021" or "the year before 2022", not just "last year".
+7. In subconscious memories, the final timestamp marks the conversation time. Do not confuse the time of
+conversation with the time when an event actually happened if the text distinguishes them.
+8. Do not say "no information found" if there are related memories that can reasonably guide a
+personalized answer. Only abstain when there is truly no relevant evidence.
+# APPROACH (Think step by step internally)
+1. Identify whether the question is (a) a factual query or (b) an advice/preference/recommendation
+query.
+2. Retrieve all memories that are clearly related to the question.
+3. Check timestamps and content to locate the most reliable and up-to-date information.
+4. For factual queries, pinpoint explicit mentions of dates, times, locations, entities, or events that
+directly answer the question.
+5. For advice / preference queries, determine what the user has already done, bought, liked, disliked,
+or constrained, and use these as anchors for a tailored answer.
+6. If temporal reasoning or simple calculation is needed, do it internally and convert the result into a
+concrete, explicit date or time span in the final answer.
+7. Formulate a precise, concise answer that directly addresses the question and is fully supported by
+the memories and reasonable inferences from them.
+Episodic Memories: {{ episodic_memories }}
+Subconscious Memories: {{ subconscious_memories }}
+Semantic Memories: {{ semantic_memories }}
+Question: {{ question }}
+Answer:
+
+
+
+                                   Figure 16: Answering Instruction
+
+
+
+
+                                                 32376
+

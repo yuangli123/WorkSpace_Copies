@@ -1,0 +1,64 @@
+# Paper v2 settings plus explicit research choices listed in docs/ASSUMPTIONS.md.
+seed: 42
+benchmark: locomo
+model:
+  dtype: bfloat16
+  device: cuda
+  reference_device: cpu
+  max_new_tokens: 1024
+  temperature: 1.0
+  gradient_checkpointing: true
+  checkpoint: null
+memory:
+  backend: chroma
+  embedding_model: /public/home/wwxia/yuang.li/models/bge-m3
+  summary_context_turns: 4
+  update_retrieval_topk: 3
+  retrieval_topk: 5
+retrieval:
+  algorithm: mot_grpo
+  trees: 3
+  max_depth: 4
+  pivots: 3
+  expansion_rounds: null  # Must be explicitly supplied; not specified by paper.
+  evidence_alpha: null   # Must be explicitly supplied; not specified by paper.
+  use_intra: true
+  use_inter: true
+  steps: 200
+  batch_size: 32
+  learning_rate: 0.000005
+  warmup_ratio: 0.285
+  kl_beta: 0.001
+  clip: 0.2
+  max_prompt_tokens: 40960
+  max_observation_tokens: 20480
+  save_every: 20
+construction:
+  rollouts: 1
+  evidence_gate: true
+  trace_gate: true
+  trace_lambda: 0.1
+  keep_fraction: 0.5
+  maximum_operations: 10000
+  steps: 200
+  max_length: 6144
+  learning_rate: 0.000005
+  warmup_ratio: 0.1
+  per_device_batch_size: 2
+  gradient_accumulation: 2
+  validation_fraction: 0.1
+  save_every: 20
+  deepspeed: configs/zero3.json
+evaluation:
+  max_steps: 6
+  fallback_answer: true  # Released inference code generates an extra answer if finish was not reached.
+distributed:
+  gpus: 8
+  tensor_parallel: 1
+  inference_tensor_parallel: 1
+  ray_address: null
+  actor_offload: true
+  rank0_init_only: false  # Rank-0 meta initialization hung with Qwen3 tied embeddings in this stack.
+  actor_model_dtype: null
+  max_batched_tokens: 8192
+  gpu_memory_utilization: 0.5

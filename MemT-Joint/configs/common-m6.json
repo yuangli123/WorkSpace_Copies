@@ -1,0 +1,5 @@
+{
+  "extends": ["two-stage.json", "common-memt-v1.json"],
+  "backend": "hf",
+  "experiment": {"variant": "M6"}
+}

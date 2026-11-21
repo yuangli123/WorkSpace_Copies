@@ -1,0 +1,5 @@
+{
+  "extends": ["common-memt-v1.json"],
+  "retrieval": {"steps": 50},
+  "runtime": {"save_every": 10, "validate_every": 10}
+}

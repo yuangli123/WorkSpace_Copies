@@ -1,0 +1,12 @@
+{
+  "extends": [
+    "construction-study-200.yaml"
+  ],
+  "experiment": {
+    "name": "construction-study200-recovery-20261105",
+    "output": "/public/home/wwxia/yuang.li/workspace/Mem-T/artifacts/construction-study200-recovery-20261105"
+  },
+  "study": {
+    "peak_additional_bytes": 20000000000
+  }
+}

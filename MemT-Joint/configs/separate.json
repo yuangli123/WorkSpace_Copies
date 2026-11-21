@@ -1,0 +1,5 @@
+{
+  "extends": ["joint.json"],
+  "backend": "hf",
+  "experiment": {"variant": "M5"}
+}

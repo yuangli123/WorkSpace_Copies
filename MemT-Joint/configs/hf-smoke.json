@@ -1,0 +1,7 @@
+{
+  "extends": ["joint.json"],
+  "backend": "hf",
+  "joint": {"global_rollouts": 2, "builder_rollouts": 2, "updater_rollouts": 2, "global_questions": 2, "local_questions": 2, "retrieval_questions": 1},
+  "retrieval": {"steps": 5, "warmup_ratio": 0.0},
+  "runtime": {"save_every": 1}
+}

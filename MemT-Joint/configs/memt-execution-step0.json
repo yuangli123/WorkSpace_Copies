@@ -1,0 +1,5 @@
+{
+  "extends": ["common-a100x2-50.json"],
+  "experiment": {"variant": "M0", "train_roles": []},
+  "runtime": {"monitor_interval": 2}
+}

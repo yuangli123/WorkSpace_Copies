@@ -1,0 +1,46 @@
+{
+  "schema_version": 2,
+  "extends": [
+    "../models/qwen3-4b.yaml",
+    "../methods/memt.yaml"
+  ],
+  "experiment": {
+    "name": "construction-smoke4-root-layout",
+    "scope": "four-step construction smoke",
+    "output": "/public/home/wwxia/yuang.li/workspace/Mem-T/artifacts/construction-smoke4-root-layout",
+    "data": "/public/home/wwxia/yuang.li/workspace/Mem-T/artifacts/retrieval-trial-20261026/data/full",
+    "questions": {
+      "train": 8,
+      "evaluation": 8
+    },
+    "evaluation_split": "valid",
+    "target_selected_operations": 0
+  },
+  "storage": {
+    "allowed_root": "/public/home/wwxia/yuang.li",
+    "roots": [
+      "/public/home/wwxia/yuang.li/workspace/Mem-T",
+      "/public/home/wwxia/yuang.li/models/Qwen3-4B",
+      "/public/home/wwxia/yuang.li/models/bge-m3",
+      "/public/home/wwxia/yuang.li/models/.cache/memt",
+      "/public/home/wwxia/yuang.li/models/memt-environment-smoke"
+    ],
+    "ledger": "/public/home/wwxia/yuang.li/workspace/Mem-T/artifacts/construction-smoke4-20261102/storage-ledger.json",
+    "excluded_roots": [
+      "/public/home/wwxia/yuang.li/miniforge3/envs/memt-train"
+    ],
+    "limit_bytes": 100000000000,
+    "warning_bytes": 90000000000,
+    "runtime_reserve_bytes": 2000000000,
+    "full_checkpoint_reserve_bytes": 26000000000,
+    "model_reserve_bytes": 9500000000,
+    "export_reserve_bytes": 9500000000
+  },
+  "runtime": {
+    "compress_traces": true,
+    "managed_checkpoints": true,
+    "restore_probe_step": 5,
+    "monitor_interval": 2,
+    "stop_file": "/public/home/wwxia/yuang.li/workspace/Mem-T/artifacts/construction-smoke4-20261102/STOP_AFTER_CHECKPOINT"
+  }
+}

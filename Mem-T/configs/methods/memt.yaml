@@ -1,0 +1,68 @@
+{
+  "seed": 42,
+  "benchmark": "locomo",
+  "memory": {
+    "backend": "chroma",
+    "embedding_model": "/public/home/wwxia/yuang.li/models/bge-m3",
+    "summary_context_turns": 4,
+    "update_retrieval_topk": 3,
+    "retrieval_topk": 5
+  },
+  "retrieval": {
+    "algorithm": "mot_grpo",
+    "trees": 3,
+    "max_depth": 4,
+    "pivots": 3,
+    "expansion_rounds": 1,
+    "evidence_alpha": 1.0,
+    "use_intra": true,
+    "use_inter": true,
+    "steps": 200,
+    "batch_size": 32,
+    "learning_rate": 5e-06,
+    "warmup_ratio": 0.285,
+    "kl_beta": 0.001,
+    "clip": 0.2,
+    "max_prompt_tokens": 40960,
+    "max_observation_tokens": 20480,
+    "save_every": 5,
+    "validate_every": 20
+  },
+  "construction": {
+    "rollouts": 1,
+    "evidence_gate": true,
+    "trace_gate": true,
+    "trace_lambda": 0.1,
+    "keep_fraction": 0.5,
+    "maximum_operations": 10000,
+    "steps": 4,
+    "max_length": 6144,
+    "learning_rate": 5e-06,
+    "warmup_ratio": 0.1,
+    "per_device_batch_size": 2,
+    "gradient_accumulation": 4,
+    "validation_fraction": 0.1,
+    "save_every": 2,
+    "deepspeed": "configs/methods/zero3-construction.json",
+    "protocol": "paper-v2",
+    "checkpoint_policy": "export_only",
+    "global_batch_size": 32,
+    "attention_implementation": "flash_attention_2"
+  },
+  "evaluation": {
+    "max_steps": 6,
+    "fallback_answer": true
+  },
+  "distributed": {
+    "gpus": 4,
+    "tensor_parallel": 4,
+    "inference_tensor_parallel": 4,
+    "generation_batch_size": 16,
+    "ray_address": null,
+    "actor_offload": false,
+    "rank0_init_only": false,
+    "actor_model_dtype": "bfloat16",
+    "max_batched_tokens": 8192,
+    "gpu_memory_utilization": 0.4
+  }
+}

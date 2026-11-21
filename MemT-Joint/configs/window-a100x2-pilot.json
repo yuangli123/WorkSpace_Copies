@@ -1,0 +1,32 @@
+{
+  "extends": [
+    "common-memt-v1.json"
+  ],
+  "protocol": {
+    "name": "memt-window-v2",
+    "answer_inference": "vllm",
+    "answer_weights": "current_policy"
+  },
+  "joint": {
+    "global_rollouts": 2,
+    "builder_rollouts": 2,
+    "updater_rollouts": 2,
+    "global_questions": 4,
+    "local_questions": 4,
+    "local_anchors": 1,
+    "retrieval_questions": 4
+  },
+  "retrieval": {
+    "steps": 3,
+    "warmup_ratio": 0.0
+  },
+  "runtime": {
+    "save_every": 1,
+    "validate_every": 10
+  },
+  "window": {
+    "bundle": "REQUIRED_REVIEWED_BUNDLE",
+    "blocks": 8,
+    "step_seconds": 1800
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "extends": [
+    "construction-study-200-recovery.yaml"
+  ],
+  "experiment": {
+    "name": "construction-study200-c1-20261106",
+    "output": "/public/home/wwxia/yuang.li/workspace/Mem-T/artifacts/construction-study200-c1-20261106"
+  },
+  "study": {
+    "collector_gpus": 1,
+    "peak_additional_bytes": 17000000000
+  }
+}

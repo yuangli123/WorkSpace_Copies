@@ -1,0 +1,4 @@
+# CPU mechanism checks; no transformers/vLLM or model download is needed.
+pytest>=7,<9
+torch>=2.2
+numpy>=1.24,<2

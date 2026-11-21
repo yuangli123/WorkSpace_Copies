@@ -1,0 +1,16 @@
+{
+  "extends": [
+    "joint.json"
+  ],
+  "retrieval": {
+    "steps": 50
+  },
+  "distributed": {
+    "gpus": 2,
+    "tensor_parallel": 2
+  },
+  "runtime": {
+    "save_every": 10,
+    "validate_every": 10
+  }
+}

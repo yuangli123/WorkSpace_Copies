@@ -1,0 +1,140 @@
+     RecMem: Recurrence-based Memory Consolidation for Efficient and
+                 Effective Long-Running LLM Agents
+                    Zijie Dai1 Shiyuan Deng2 * Sheng Guan3 Yizhou Tian1
+                             Xin Yao4 Xiao Yan5 James Cheng1
+    1
+      Department of Computer Science and Engineering, The Chinese University of Hong Kong
+         3
+           School of Computer Science, Beijing University of Posts and Telecommunications
+      2
+        Huawei Cloud, 4 Huawei Theory Lab, 5 Institute for Math and AI, Wuhan University
+                    caiusdai@link.cuhk.edu.hk dengshiyuan@huawei.com
+
+                        Abstract                              dences even if they are present in long inputs due
+                                                              to the lost-in-the-middle effect (Liu et al., 2023).
+     Memory systems often organize user-agent in-                To address these limitations, memory systems
+     teractions as retrievable external memory and            emerge as an essential component for building
+     are crucial for long-running agents by over-             long-running LLM agents (Jiang et al., 2025;
+     coming the limited context windows of LLMs.
+                                                              Zhang et al., 2024), and many solutions have been
+     However, existing memory systems invoke
+     LLMs to process every incoming interaction               proposed with different memory structures and
+     for memory extraction, and such an eager mem-            memory extraction methods (Xu et al., 2025b;
+     ory consolidation scheme leads to substan-               Chhikara et al., 2025; Rezazadeh et al., 2025;
+     tial token consumption. To tackle this prob-             Packer et al., 2024; Maharana et al., 2024). For
+     lem, we propose RecMem by rethinking when                example, Zep (Rasmussen et al., 2025) constructs
+     memory consolidation should be conducted.                temporal knowledge graphs by abstracting rela-
+     RecMem stores incoming interactions in a sub-
+                                                              tional triplets from interactions; Mem0 (Chhikara
+     conscious memory layer and encode them us-
+     ing lightweight embedding models for retrieval.          et al., 2025) extracts atomic facts from interactions
+     LLMs are only invoked to extract episodic and            for similarity-based retrieval; A-Mem (Xu et al.,
+     semantic memory when sustained recurrence                2025b) organizes interactions as connected notes,
+     are observed for semantically similar interac-           and a note can update the contents of its neighbors.
+     tions. Such recurrence-based consolidation                  Despite the differences in existing memory sys-
+     works because these interactions correspond              tems, we observe that they all adopt an eager mem-
+     to a semantic cluster with rich information              ory consolidation scheme. In particular, for every
+     and thus are worth extraction and summariza-
+                                                              incoming user-item interaction, they invoke LLMs
+     tion. To improve accuracy, RecMem also in-
+     corporates a semantic refinement mechanism               to extract facts and merge these facts with existing
+     that recovers the fine-grained facts omitted by          memory contents. This scheme avoids missing in-
+     memory extraction. Experiments show that                 formation in the interactions but incurs substantial
+     RecMem reduces the memory construction to-               token cost for memory construction, as shown in
+     ken cost of three SOTA memory systems by up              Figure 1(d), which makes it expensive to utilize
+     to 87% while exceeding their accuracy.                   these memory systems in practice. We argue that
+                                                              running LLM-based memory consolidation for ev-
+1    Introduction                                             ery interaction is an overkill. For instance, some
+                                                              interactions may convey little information or con-
+Large Language Models (LLMs) have demon-
+                                                              tain noise, while some interactions are not related
+strated strong capabilities across a wide range of
+                                                              to existing ones and can be queried directly with-
+tasks (Guo et al., 2024; Shao et al., 2024). How-
+                                                              out consolidation. Hence, it is possible to reduce
+ever, enabling LLMs to function as long-running
+                                                              the memory construction cost by choosing when to
+agents requires accumulating experience over ex-
+                                                              conduct memory consolidation more judiciously.
+tended user-agent interactions (Jiang et al., 2025).
+                                                                 Similar insights emerge from cognitive science.
+In practice, this is hindered by two critical limi-
+                                                              The multi-store theory (Atkinson and Shiffrin,
+tations: current LLMs cannot retain information
+                                                              1968) and the Complementary Learning Systems
+beyond their limited context windows (Liu et al.,
+                                                              framework (Kumaran et al., 2016; O’Reilly et al.,
+2025), and they often under-utilize relevant evi-
+                                                              2014; McClelland et al., 1995) both converge on
+    * Dr. Shiyuan Deng is the corresponding author.           a common principle: isolated experiences remain
+                                                        32353
+                 Findings of the Association for Computational Linguistics: ACL 2026, pages 32353–32376
+                              July 2-7, 2026 ©2026 Association for Computational Linguistics
+                                                                                                         100
+                                                                                                                                            81.10
+
+
+
+
+                                                                               Overall (LLM-as-Judge)
+                                                                                                          75 67.60       68.83
+                                                                                                                                   62.92
+                                                                                                          50
+                     …                                            Episodic
+                                                                  Memory
+                                                                                                          25
+                                                                                                           0 MemoryOS A-Mem       Mem0 RecMem
+                      …                                                                                             (c) Task accuracy
+
+
+
+
+                                                                               Consolidation Tokens(K)
+                                                                                                                      1459.9K    1520.8K
+                      …
+                                         Subconscious
+                                         Memory
+              …                                                                                            400.7K
+                                                                  Semantic                                                                 193.2K
+        Memory Modules                                            Memory
+                                                                                                         MemoryOS A-Mem          Mem0      RecMem
+ (a) Eager memory consolidation    (b) Recurrence-based consolidation (ours)                               (d) Memory construction cost
+
+Figure 1: Comparing RecMem with existing memory systems. (a) Existing systems conduct eager memory
+consolidation for every incoming interaction; (b) our RecMem conducts recurrence-based consolidation selectively
+from a subconscious memory; (c)-(d) task accuracy and memory construction cost on the LoCoMo benchmark.
+
+
+in transient or rapidly-encoded stores, and only re-       captured by the episodic memory, and distills them
+peated or recurring patterns drive consolidation into      into a semantic memory to avoid information loss.
+stable long-term memory. This principle directly              We empirically evaluate RecMem on two chal-
+motivates RecMem’s recurrence-driven consolida-            lenging long-term memory benchmarks (i.e., Lo-
+tion scheme.                                               CoMo (Maharana et al., 2024) and LongMemEval-
+   Motivated by these insights, we propose                 S (Wu et al., 2025)) and compare with three SOTA
+RecMem, an efficient memory system for long-               memory systems (i.e., Mem0 (Chhikara et al.,
+running agents that conducts fewer LLM-based               2025), A-Mem (Xu et al., 2025b), and Memo-
+memory consolidations in a recurrence-driven man-          ryOS (Kang et al., 2025)). The results show that
+ner. In particular, RecMem introduces a subcon-            RecMem yields higher question answering accu-
+scious memory layer that buffers the raw user-agent        racy than all baselines on both datasets while dras-
+interactions via lightweight embeddings, enabling          tically reducing the token cost for memory con-
+cost-effective retrieval without invoking LLMs.            struction. In particular, on the LoCoMo benchmark
+Memory consolidation is only conducted when an             in Figure 1(d), RecMem reduces the token con-
+incoming interaction can find a sufficient number          sumption by up to 7.8x over the baselines. More-
+of semantically similar or related interactions in         over, RecMem’s query-time token cost remains
+the subconscious memory, and LLMs are utilized             comparable to existing memory systems, so the
+to extract episodic summaries and semantic facts           construction-time savings translate into lower end-
+from these interactions. This works because these          to-end cost over long interaction histories.
+interactions form a semantic cluster with rich in-            Our contributions are summarized as follows:
+formation that is worth memory consolidation and              • We identify a fundamental inefficiency in ex-
+resembles generating long-term memory from tran-                 isting LLM memory systems, i.e., eager mem-
+sient memory in cognitive science.                               ory consolidation for every interaction leads
+   RecMem also incorporates a semantic refine-                   to a high memory construction token cost.
+ment mechanism to improve accuracy. Specifi-                  • Inspired by cognitive science, we propose
+cally, LLM-based extraction, especially event-level              recurrence-based consolidation to save to-
+episodic summarization, may omit fine-grained but                ken cost by conducting memory consolidation
+query-critical details, leading to lossy long-term               only when an incoming interaction can find a
+memory. Our semantic refinement revisits the raw                 sufficient number of semantically similar or
+interactions associated with each episodic memory,               related interactions.
+extracts the missing and persistent facts that are not        • We present RecMem, a three-tier memory ar-
+                                                        32354
+

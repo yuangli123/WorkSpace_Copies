@@ -1,0 +1,5 @@
+{
+  "extends": ["short8-m4-50.json"],
+  "retrieval": {"steps": 2},
+  "runtime": {"save_every": 2}
+}

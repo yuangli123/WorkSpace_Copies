@@ -1,0 +1,34 @@
+{
+  "extends": [
+    "hf-smoke.json"
+  ],
+  "backend": "fixture",
+  "model": {
+    "device": "cpu",
+    "max_new_tokens": 4096
+  },
+  "memory": {
+    "embedding_model": null,
+    "summary_context_turns": 1
+  },
+  "retrieval": {
+    "trees": 3,
+    "max_depth": 4,
+    "pivots": 2,
+    "expansion_rounds": 1,
+    "observation_tokens": 4096,
+    "token_budget": 16000,
+    "max_prompt_tokens": 32000
+  },
+  "joint": {
+    "global_rollouts": 3,
+    "builder_rollouts": 3,
+    "updater_rollouts": 3,
+    "global_questions": 2,
+    "local_questions": 2,
+    "retrieval_questions": 2
+  },
+  "runtime": {
+    "monitor_interval": 0
+  }
+}

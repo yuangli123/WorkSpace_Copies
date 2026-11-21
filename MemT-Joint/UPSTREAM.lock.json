@@ -1,0 +1,18 @@
+{
+  "mem_t": {
+    "url": "https://github.com/yanweiyue/Mem-T",
+    "commit": "8c2272028f74c2b841aa0fbdf0d324c9d01f6914",
+    "license": "Apache-2.0"
+  },
+  "tree_grpo": {
+    "url": "https://github.com/AMAP-ML/Tree-GRPO",
+    "commit": "19bf3fa0c74d8b9ba70619a09a2fd480c31b9d59",
+    "license": "Apache-2.0",
+    "local_patch": "FSDP init_model selects MoTActor; vLLM rollout forwards per-request sampling_seed; actor import relocated to training.verl_actor"
+  },
+  "paper": {
+    "arxiv": "2601.23014v2",
+    "version_date": "2026-03-09"
+  },
+  "status": "Research reimplementation; not authors' released training implementation"
+}

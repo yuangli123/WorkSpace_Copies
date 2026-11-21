@@ -1,0 +1,88 @@
+seed: 42
+benchmark: locomo
+model:
+  dtype: bfloat16
+  device: cuda
+  reference_device: cpu
+  max_new_tokens: 1024
+  temperature: 1.0
+  gradient_checkpointing: true
+  checkpoint: null
+memory:
+  backend: chroma
+  embedding_model: /public/home/wwxia/yuang.li/models/bge-m3
+  summary_context_turns: 4
+  update_retrieval_topk: 3
+  retrieval_topk: 5
+retrieval:
+  algorithm: mot_grpo
+  trees: 3
+  max_depth: 4
+  pivots: 3
+  expansion_rounds: 1
+  evidence_alpha: 1
+  use_intra: true
+  use_inter: true
+  steps: 200
+  batch_size: 32
+  learning_rate: 0.000005
+  warmup_ratio: 0.285
+  kl_beta: 0.001
+  clip: 0.2
+  max_prompt_tokens: 40960
+  max_observation_tokens: 20480
+  save_every: 5
+  validate_every: 20
+construction:
+  rollouts: 1
+  evidence_gate: true
+  trace_gate: true
+  trace_lambda: 0.1
+  keep_fraction: 0.5
+  maximum_operations: 10000
+  steps: 200
+  max_length: 6144
+  learning_rate: 0.000005
+  warmup_ratio: 0.1
+  per_device_batch_size: 2
+  gradient_accumulation: 2
+  validation_fraction: 0.1
+  save_every: 20
+  deepspeed: configs/zero3.json
+evaluation:
+  max_steps: 6
+  fallback_answer: true
+distributed:
+  gpus: 4
+  tensor_parallel: 4
+  inference_tensor_parallel: 4
+  generation_batch_size: 16
+  ray_address: null
+  actor_offload: false
+  rank0_init_only: false
+  actor_model_dtype: bfloat16
+  max_batched_tokens: 8192
+  gpu_memory_utilization: 0.4
+runtime:
+  compress_traces: true
+  managed_checkpoints: true
+  restore_probe_step: 5
+  monitor_interval: 2
+  stop_file: /public/home/wwxia/yuang.li/workspace/Mem-T/artifacts/long200-20261027/STOP_AFTER_CHECKPOINT
+storage:
+  allowed_root: /public/home/wwxia/yuang.li
+  roots:
+    - /public/home/wwxia/yuang.li/workspace/Mem-T
+    - /public/home/wwxia/yuang.li/models/Qwen3-4B
+    - /public/home/wwxia/yuang.li/models/bge-m3
+    - /public/home/wwxia/yuang.li/models/.cache/memt
+    - /public/home/wwxia/yuang.li/models/memt-environment-smoke
+  ledger: /public/home/wwxia/yuang.li/workspace/Mem-T/artifacts/long200-20261027/storage-ledger.json
+  excluded_roots:
+    - /public/home/wwxia/yuang.li/miniforge3/envs/memt-train
+  limit_bytes: 100000000000
+  warning_bytes: 90000000000
+  runtime_reserve_bytes: 2000000000
+  full_checkpoint_reserve_bytes: 26000000000
+  model_reserve_bytes: 9500000000
+  export_reserve_bytes: 9500000000

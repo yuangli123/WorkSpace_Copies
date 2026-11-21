@@ -1,0 +1,2 @@
+# Optional whole-completion export backend. Install in its own Conda environment.
+llamafactory==0.9.3

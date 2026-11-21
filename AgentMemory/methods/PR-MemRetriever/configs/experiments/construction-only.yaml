@@ -1,0 +1,13 @@
+{
+  "extends": [
+    "construction-smoke4.yaml"
+  ],
+  "models": {
+    "construction": "/public/home/wwxia/yuang.li/workspace/Mem-T/artifacts/construction-smoke4-20261102/construction/final",
+    "retrieval": "/public/home/wwxia/yuang.li/models/Qwen3-4B"
+  },
+  "experiment": {
+    "name": "construction-only",
+    "output": "/public/home/wwxia/yuang.li/workspace/Mem-T/artifacts/components/construction-only"
+  }
+}
