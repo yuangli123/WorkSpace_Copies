@@ -1,0 +1,277 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "status",
+    "confidence",
+    "material_type",
+    "summary",
+    "visual_regions",
+    "seal_assessment",
+    "extracted_fields",
+    "field_evidence",
+    "content_assessment",
+    "destination_assessment",
+    "rule_results",
+    "mismatches",
+    "risk_flags",
+    "decision_basis",
+    "manual_review_questions"
+  ],
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["pass", "fail", "review", "unsupported"]
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "material_type": {"type": "string"},
+    "summary": {"type": "string"},
+    "visual_regions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "region_id", "page_number", "region_type", "bbox",
+          "visible_text", "observation", "assessment", "basis"
+        ],
+        "properties": {
+          "region_id": {"type": "string"},
+          "page_number": {"type": "integer", "minimum": 1},
+          "region_type": {
+            "type": "string",
+            "enum": ["seal", "signature", "handwriting", "photo", "document_image", "other"]
+          },
+          "bbox": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["x1", "y1", "x2", "y2"],
+            "properties": {
+              "x1": {"type": "integer", "minimum": 0, "maximum": 1000},
+              "y1": {"type": "integer", "minimum": 0, "maximum": 1000},
+              "x2": {"type": "integer", "minimum": 0, "maximum": 1000},
+              "y2": {"type": "integer", "minimum": 0, "maximum": 1000}
+            }
+          },
+          "visible_text": {"type": "string"},
+          "observation": {"type": "string"},
+          "assessment": {
+            "type": "string",
+            "enum": ["no_obvious_anomaly", "suspicious", "unclear"]
+          },
+          "basis": {"type": "string"}
+        }
+      }
+    },
+    "seal_assessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "presence", "detected_count", "completeness",
+        "required_seals", "missing_required_seals", "basis"
+      ],
+      "properties": {
+        "presence": {
+          "type": "string",
+          "enum": ["present", "absent", "unclear"]
+        },
+        "detected_count": {"type": "integer", "minimum": 0},
+        "completeness": {
+          "type": "string",
+          "enum": ["complete", "incomplete", "not_required", "unclear"]
+        },
+        "required_seals": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "missing_required_seals": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "basis": {"type": "string"}
+      }
+    },
+    "extracted_fields": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "student_name", "student_id", "identity_last4", "organization_name",
+        "credit_code", "organization_nature", "industry", "school_name",
+        "college_name", "major_name", "graduation_year", "graduation_date",
+        "position_or_program", "work_or_study_location", "address", "salary",
+        "employment_period", "signing_or_admission_date", "start_date",
+        "contact_name", "contact_phone", "report_date",
+        "project_or_business_name", "business_owner", "business_status",
+        "seal_text", "signature", "keywords", "additional_fields"
+      ],
+      "properties": {
+        "student_name": {"type": "string"},
+        "student_id": {"type": "string"},
+        "identity_last4": {"type": "string"},
+        "organization_name": {"type": "string"},
+        "credit_code": {"type": "string"},
+        "organization_nature": {"type": "string"},
+        "industry": {"type": "string"},
+        "school_name": {"type": "string"},
+        "college_name": {"type": "string"},
+        "major_name": {"type": "string"},
+        "graduation_year": {"type": "string"},
+        "graduation_date": {"type": "string"},
+        "position_or_program": {"type": "string"},
+        "work_or_study_location": {"type": "string"},
+        "address": {"type": "string"},
+        "salary": {"type": "string"},
+        "employment_period": {"type": "string"},
+        "signing_or_admission_date": {"type": "string"},
+        "start_date": {"type": "string"},
+        "contact_name": {"type": "string"},
+        "contact_phone": {"type": "string"},
+        "report_date": {"type": "string"},
+        "project_or_business_name": {"type": "string"},
+        "business_owner": {"type": "string"},
+        "business_status": {"type": "string"},
+        "seal_text": {"type": "string"},
+        "signature": {"type": "string"},
+        "keywords": {"type": "array", "items": {"type": "string"}},
+        "additional_fields": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "value"],
+            "properties": {
+              "name": {"type": "string"},
+              "value": {"type": "string"}
+            }
+          }
+        }
+      }
+    },
+    "field_evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "page_number", "observed_text", "explanation"],
+        "properties": {
+          "field": {"type": "string"},
+          "page_number": {"type": "integer", "minimum": 1},
+          "observed_text": {"type": "string"},
+          "explanation": {"type": "string"}
+        }
+      }
+    },
+    "content_assessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verdict", "summary", "evidence_points"],
+      "properties": {
+        "verdict": {
+          "type": "string",
+          "enum": ["supported", "questionable", "insufficient"]
+        },
+        "summary": {"type": "string"},
+        "evidence_points": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["claim", "page_number", "observed_text", "assessment"],
+            "properties": {
+              "claim": {"type": "string"},
+              "page_number": {"type": "integer", "minimum": 1},
+              "observed_text": {"type": "string"},
+              "assessment": {
+                "type": "string",
+                "enum": ["supports", "contradicts", "unclear"]
+              }
+            }
+          }
+        }
+      }
+    },
+    "destination_assessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["registered_destination", "recognized_destination", "verdict", "summary", "evidence_points"],
+      "properties": {
+        "registered_destination": {"type": "string"},
+        "recognized_destination": {"type": "string"},
+        "verdict": {
+          "type": "string",
+          "enum": ["consistent", "inconsistent", "uncertain"]
+        },
+        "summary": {"type": "string"},
+        "evidence_points": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["page_number", "observed_text", "explanation"],
+            "properties": {
+              "page_number": {"type": "integer", "minimum": 1},
+              "observed_text": {"type": "string"},
+              "explanation": {"type": "string"}
+            }
+          }
+        }
+      }
+    },
+    "rule_results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["rule", "importance", "result", "page_number", "evidence"],
+        "properties": {
+          "rule": {"type": "string"},
+          "importance": {"type": "string", "enum": ["essential", "supporting", "advisory"]},
+          "result": {"type": "string", "enum": ["supported", "contradicted", "not_observed", "not_applicable"]},
+          "page_number": {"type": "integer", "minimum": 0},
+          "evidence": {"type": "string"}
+        }
+      }
+    },
+    "mismatches": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["field", "registered_value", "evidence_value", "description"],
+        "properties": {
+          "field": {"type": "string"},
+          "registered_value": {"type": "string"},
+          "evidence_value": {"type": "string"},
+          "description": {"type": "string"}
+        }
+      }
+    },
+    "risk_flags": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["type", "severity", "description", "evidence"],
+        "properties": {
+          "type": {"type": "string", "enum": ["seal", "identity", "date", "salary", "material_type", "image_quality", "other"]},
+          "severity": {"type": "string", "enum": ["low", "medium", "high"]},
+          "description": {"type": "string"},
+          "evidence": {"type": "string"}
+        }
+      }
+    },
+    "decision_basis": {
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "manual_review_questions": {
+      "type": "array",
+      "items": {"type": "string"}
+    }
+  }
+}

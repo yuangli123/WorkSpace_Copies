@@ -1,0 +1,353 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.edu/schemas/employment-evidence-review-1.0.json",
+  "title": "高校毕业生就业佐证材料核查结果",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "document_classification",
+    "ocr_pages",
+    "key_fields",
+    "visual_evidence",
+    "rule_checks",
+    "registration_consistency",
+    "decision"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "document_classification": {
+      "$ref": "#/$defs/documentClassification"
+    },
+    "ocr_pages": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ocrPage"
+      }
+    },
+    "key_fields": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/keyField"
+      }
+    },
+    "visual_evidence": {
+      "$ref": "#/$defs/visualEvidence"
+    },
+    "rule_checks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ruleCheck"
+      }
+    },
+    "registration_consistency": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/registrationCheck"
+      }
+    },
+    "decision": {
+      "$ref": "#/$defs/decision"
+    }
+  },
+  "$defs": {
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["page", "quote", "region", "source_type"],
+      "properties": {
+        "page": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "quote": {
+          "type": "string"
+        },
+        "region": {
+          "type": "string"
+        },
+        "source_type": {
+          "type": "string",
+          "enum": ["印刷", "手写", "印章", "签名", "版式", "登记字段"]
+        }
+      }
+    },
+    "documentClassification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["category", "subcategory", "document_name", "confidence", "evidence"],
+      "properties": {
+        "category": {
+          "type": "string",
+          "enum": [
+            "签就业协议形式",
+            "签劳动合同形式",
+            "其他录用形式",
+            "科研、管理助理或博士后",
+            "国家、地方基层项目",
+            "自主创业",
+            "自由职业",
+            "升学",
+            "无法判断"
+          ]
+        },
+        "subcategory": {
+          "type": "string"
+        },
+        "document_name": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence"
+          }
+        }
+      }
+    },
+    "ocrPage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "page",
+        "printed_text",
+        "handwritten_text",
+        "seal_text",
+        "signature_text",
+        "unreadable_or_uncertain"
+      ],
+      "properties": {
+        "page": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "printed_text": {
+          "type": "string"
+        },
+        "handwritten_text": {
+          "type": "string"
+        },
+        "seal_text": {
+          "type": "string"
+        },
+        "signature_text": {
+          "type": "string"
+        },
+        "unreadable_or_uncertain": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "keyField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field_name",
+        "value",
+        "normalized_value",
+        "page",
+        "source_type",
+        "evidence",
+        "confidence"
+      ],
+      "properties": {
+        "field_name": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        },
+        "normalized_value": {
+          "type": "string"
+        },
+        "page": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "source_type": {
+          "type": "string",
+          "enum": ["印刷", "手写", "印章", "签名"]
+        },
+        "evidence": {
+          "type": "string"
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "visualEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "seal_status",
+        "seal_texts",
+        "seal_completeness",
+        "required_seals",
+        "missing_required_seals",
+        "signature_status",
+        "suspicious_signs",
+        "authenticity_assessment",
+        "limitations"
+      ],
+      "properties": {
+        "seal_status": {
+          "type": "string",
+          "enum": ["存在", "不存在", "无法判断"]
+        },
+        "seal_texts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "seal_completeness": {
+          "type": "string",
+          "enum": ["齐全", "不齐全", "不要求", "无法判断"]
+        },
+        "required_seals": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "missing_required_seals": {
+          "type": "array",
+          "items": {"type": "string"}
+        },
+        "signature_status": {
+          "type": "string",
+          "enum": ["存在", "不存在", "无法判断", "不适用"]
+        },
+        "suspicious_signs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "authenticity_assessment": {
+          "type": "string",
+          "enum": ["未发现明显异常", "存在可疑迹象", "无法判断"]
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "ruleCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rule_id", "description", "status", "evidence", "reason"],
+      "properties": {
+        "rule_id": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["通过", "不通过", "无法判断", "不适用", "人工复核"]
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/evidence"
+          }
+        },
+        "reason": {
+          "type": "string"
+        }
+      }
+    },
+    "registrationCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field_name",
+        "registered_value",
+        "extracted_value",
+        "status",
+        "reason",
+        "evidence_pages"
+      ],
+      "properties": {
+        "field_name": {
+          "type": "string"
+        },
+        "registered_value": {
+          "type": "string"
+        },
+        "extracted_value": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["一致", "不一致", "无法判断", "豁免"]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "evidence_pages": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "recommended_result",
+        "reason_codes",
+        "summary",
+        "missing_items",
+        "manual_review_items"
+      ],
+      "properties": {
+        "recommended_result": {
+          "type": "string",
+          "enum": ["通过", "不通过", "人工复核", "材料不足"]
+        },
+        "reason_codes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "summary": {
+          "type": "string"
+        },
+        "missing_items": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "manual_review_items": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
